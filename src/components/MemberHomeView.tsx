@@ -7,6 +7,7 @@ import { MemberStatusCard } from '@/components/MemberStatusCard';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { AskInput } from '@/components/AskInput';
 import { CheckInModal } from '@/components/CheckInModal';
+import { AuthModal } from '@/components/AuthModal';
 import { DeskHandoff } from '@/components/DeskHandoff';
 
 /**
@@ -29,6 +30,7 @@ const INITIAL_CACHED_STATUS: MemberStatusSummary = {
 
 export function MemberHomeView() {
   const [status, setStatus] = useState<MemberStatusSummary>(INITIAL_CACHED_STATUS);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
   const [activeAnswer, setActiveAnswer] = useState<AskQuestionResponse | null>(null);
   const [isAsking, setIsAsking] = useState(false);
@@ -36,14 +38,16 @@ export function MemberHomeView() {
 
   // Dynamically update document title based on the active view
   useEffect(() => {
-    if (isCheckInOpen) {
+    if (isAuthOpen) {
+      document.title = 'Sign In | Spotter';
+    } else if (isCheckInOpen) {
       document.title = 'Check In | Spotter';
     } else if (activeAnswer) {
       document.title = 'Record Answer | Spotter';
     } else {
       document.title = 'Spotter | Your personal gym records';
     }
-  }, [isCheckInOpen, activeAnswer]);
+  }, [isAuthOpen, isCheckInOpen, activeAnswer]);
 
   const handleAskQuestion = async (questionText: string) => {
     setIsAsking(true);
@@ -151,7 +155,7 @@ export function MemberHomeView() {
         <button
           id="header-get-started-btn"
           type="button"
-          onClick={() => setIsCheckInOpen(true)}
+          onClick={() => setIsAuthOpen(true)}
           style={{
             backgroundColor: 'var(--color-primary)',
             color: 'var(--color-on-primary)',
@@ -223,7 +227,7 @@ export function MemberHomeView() {
           <button
             id="hero-get-started-cta"
             type="button"
-            onClick={() => setIsCheckInOpen(true)}
+            onClick={() => setIsAuthOpen(true)}
             style={{
               backgroundColor: 'var(--color-primary)',
               color: 'var(--color-on-primary)',
@@ -264,6 +268,7 @@ export function MemberHomeView() {
         <MemberStatusCard
           status={status}
           onRefreshBalance={handleRefreshBalance}
+          onOpenCheckIn={() => setIsCheckInOpen(true)}
         />
 
         {/* Active Answer Display (if question was asked) */}
@@ -356,6 +361,23 @@ export function MemberHomeView() {
         isOpen={isCheckInOpen}
         onClose={() => setIsCheckInOpen(false)}
         onCheckIn={handleCheckInSubmit}
+      />
+
+      {/* Sign In / Sign Up Auth Modal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        officerName={officerOnDuty}
+        onSuccess={(name) => {
+          if (name) {
+            // Update cached display if needed
+            setStatus((prev) => ({
+              ...prev,
+              firstName: name.split(' ')[0] || prev.firstName,
+              lastName: name.split(' ')[1] || prev.lastName,
+            }));
+          }
+        }}
       />
     </div>
   );

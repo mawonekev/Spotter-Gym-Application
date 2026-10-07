@@ -43,6 +43,9 @@ export const COPY = {
   EMPTY_PAYMENTS: 'No payments recorded yet. Ask the front desk if you paid in cash.',
   PAYMENT_INITIATION_FAILURE: 'Payment could not start. Try again or pay at the desk.',
   PAYMENT_CONFIRMATION_TIMEOUT: 'The gym is confirming your payment. Check back in a minute.',
+  ACTIVATION_TITLE: 'Enter your activation code.',
+  ACTIVATION_HELPER: 'Ask at the front desk or message the desk on WhatsApp.',
+  ACTIVATION_INVALID_CODE: 'That code is not valid. Ask the front desk for a new one.',
 } as const;
 
 /**

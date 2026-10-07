@@ -5,9 +5,14 @@ import { COPY, formatKoboToNaira } from '../lib/constants';
 interface MemberStatusCardProps {
   status: MemberStatusSummary;
   onRefreshBalance?: () => void;
+  onOpenCheckIn?: () => void;
 }
 
-export function MemberStatusCard({ status, onRefreshBalance }: MemberStatusCardProps) {
+export function MemberStatusCard({
+  status,
+  onRefreshBalance,
+  onOpenCheckIn,
+}: MemberStatusCardProps) {
   const isZeroDays = status.daysTrainedThisMonth === 0;
   const daysCounterText = isZeroDays
     ? '0 days this month'
@@ -89,7 +94,7 @@ export function MemberStatusCard({ status, onRefreshBalance }: MemberStatusCardP
           padding: 'var(--spacing-3) var(--spacing-4)',
           border: 'var(--border-width-thin) solid var(--border-color-subtle)',
           display: 'flex',
-          alignItems: 'baseline',
+          alignItems: 'center',
           justifyContent: 'space-between',
         }}
       >
@@ -114,15 +119,42 @@ export function MemberStatusCard({ status, onRefreshBalance }: MemberStatusCardP
           >
             {daysCounterText}
           </span>
+          <span
+            style={{
+              display: 'block',
+              fontSize: 'var(--font-size-11)',
+              color: 'var(--color-on-surface-variant)',
+              marginTop: 'var(--spacing-1)',
+            }}
+          >
+            Expires {status.expiryDate}
+          </span>
         </div>
-        <span
-          style={{
-            fontSize: 'var(--font-size-12)',
-            color: 'var(--color-on-surface-variant)',
-          }}
-        >
-          Expires {status.expiryDate}
-        </span>
+
+        {onOpenCheckIn && (
+          <button
+            type="button"
+            id="attendance-checkin-btn"
+            onClick={onOpenCheckIn}
+            style={{
+              backgroundColor: 'var(--color-primary-container)',
+              color: 'var(--color-on-primary-container)',
+              border: 'none',
+              padding: '0.625rem 1rem',
+              borderRadius: 'var(--radius-sm)',
+              fontFamily: 'var(--font-family-primary)',
+              fontSize: 'var(--font-size-14)',
+              fontWeight: 'var(--font-weight-semi-bold)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              boxShadow: 'var(--elevation-level1)',
+            }}
+            aria-label="Check In"
+          >
+            Check In
+          </button>
+        )}
       </div>
 
       {/* Balance Statement with strict FR-8b framing */}
