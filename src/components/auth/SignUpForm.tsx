@@ -106,11 +106,7 @@ export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
     const val = e.target.value;
     setPassword(val);
     if (errors.password) {
-      if (val.length >= 8) {
-        setErrors((prev) => ({ ...prev, password: null }));
-      } else if (errors.password === 'This field must not be empty' && val.length > 0) {
-        setErrors((prev) => ({ ...prev, password: null }));
-      }
+      setErrors((prev) => ({ ...prev, password: null }));
     }
   };
 
