@@ -49,7 +49,7 @@ export function AuthPage() {
     );
     setTimeout(() => {
       router.push('/');
-    }, 1000);
+    }, 2000);
   };
 
   const titles: Record<AuthView, { title: string; subtitle: string }> = {
@@ -135,6 +135,9 @@ export function AuthPage() {
       >
         {successNotice ? (
           <div
+            role="status"
+            aria-live="polite"
+            tabIndex={-1}
             style={{
               textAlign: 'center',
               padding: '36px 0',
@@ -142,9 +145,11 @@ export function AuthPage() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: '12px',
+              outline: 'none',
             }}
           >
             <div
+              aria-hidden="true"
               style={{
                 width: '48px',
                 height: '48px',

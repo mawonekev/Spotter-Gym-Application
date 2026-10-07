@@ -8,6 +8,7 @@ export interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputEleme
   error?: string | null;
   helperText?: string;
   rightElement?: React.ReactNode;
+  required?: boolean;
 }
 
 export function FormField({
@@ -16,12 +17,19 @@ export function FormField({
   error,
   helperText,
   rightElement,
+  required,
   style,
   ...inputProps
 }: FormFieldProps) {
   const hasError = !!error;
   const errorId = `${id}-error`;
   const helperId = `${id}-helper`;
+
+  // Programmatically associate both error and helper text when present
+  const describedBy = [
+    hasError ? errorId : null,
+    helperText ? helperId : null,
+  ].filter(Boolean).join(' ') || undefined;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
@@ -37,6 +45,14 @@ export function FormField({
         }}
       >
         {label}
+        {required && (
+          <span
+            aria-hidden="true"
+            style={{ color: 'var(--color-error, #DC2626)', marginLeft: '3px' }}
+          >
+            *
+          </span>
+        )}
       </label>
 
       {/* Input Group with optional rightElement */}
@@ -49,10 +65,10 @@ export function FormField({
       >
         <input
           id={id}
+          required={required}
+          aria-required={required ? 'true' : undefined}
           aria-invalid={hasError ? 'true' : 'false'}
-          aria-describedby={
-            hasError ? errorId : helperText ? helperId : undefined
-          }
+          aria-describedby={describedBy}
           style={{
             flex: 1,
             height: '44px',
@@ -77,11 +93,12 @@ export function FormField({
         {rightElement}
       </div>
 
-      {/* Error Message with Warning Icon (Accessibility: role="alert") */}
-      {hasError ? (
+      {/* Error Message with Warning Icon (Polite live region to avoid keystroke interruption) */}
+      {hasError && (
         <div
           id={errorId}
-          role="alert"
+          role="status"
+          aria-live="polite"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -109,7 +126,10 @@ export function FormField({
           </svg>
           <span>{error}</span>
         </div>
-      ) : helperText ? (
+      )}
+
+      {/* Helper Text (Persists alongside error if present) */}
+      {helperText && (
         <div
           id={helperId}
           style={{
@@ -120,7 +140,7 @@ export function FormField({
         >
           {helperText}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

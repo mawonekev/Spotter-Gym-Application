@@ -168,6 +168,35 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
         password: validationErrors.password || null,
       });
       setPrivacyError(validationErrors.privacyAccepted || null);
+
+      // Focus the first invalid field for screen reader and keyboard navigation
+      if (typeof document !== 'undefined') {
+        const errorOrder: (keyof typeof validationErrors)[] = [
+          'fullName',
+          'email',
+          'phone',
+          'memberNumber',
+          'password',
+          'privacyAccepted',
+        ];
+        const fieldIdMap: Record<string, string> = {
+          fullName: 'signup-fullname',
+          email: 'signup-email',
+          phone: 'signup-phone',
+          memberNumber: 'signup-membernumber',
+          password: 'signup-password',
+          privacyAccepted: 'signup-privacy',
+        };
+        for (const key of errorOrder) {
+          if (validationErrors[key]) {
+            const el = document.getElementById(fieldIdMap[key]);
+            if (el) {
+              el.focus();
+              break;
+            }
+          }
+        }
+      }
       return;
     }
 
@@ -180,7 +209,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form onSubmit={handleSubmit} noValidate aria-label="Create Account">
       <div
         style={{
           display: 'flex',
@@ -195,6 +224,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           id="signup-fullname"
           label="Full Name"
           type="text"
+          required
           value={fullName}
           onChange={handleFullNameChange}
           onBlur={handleFullNameBlur}
@@ -208,6 +238,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           id="signup-email"
           label="Email Address"
           type="email"
+          required
           value={email}
           onChange={handleEmailChange}
           onBlur={handleEmailBlur}
@@ -221,6 +252,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           id="signup-phone"
           label="Mobile Number"
           type="tel"
+          required
           value={phone}
           onChange={handlePhoneChange}
           onBlur={handlePhoneBlur}
@@ -235,6 +267,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           id="signup-membernumber"
           label="Member Number"
           type="text"
+          required
           value={memberNumber}
           onChange={handleMemberNumberChange}
           onBlur={handleMemberNumberBlur}
@@ -248,6 +281,8 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           id="signup-password"
           label="Password"
           type={showPassword ? 'text' : 'password'}
+          required
+          autoComplete="new-password"
           value={password}
           onChange={handlePasswordChange}
           onBlur={handlePasswordBlur}
@@ -261,6 +296,9 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              aria-controls="signup-password"
               style={{
                 backgroundColor: 'var(--color-surface-container, #E2E8F0)',
                 borderWidth: '1px',
@@ -288,6 +326,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
         {/* Privacy Notice Checkbox */}
         <div style={{ marginTop: '4px' }}>
           <label
+            htmlFor="signup-privacy"
             style={{
               display: 'flex',
               alignItems: 'flex-start',
@@ -301,6 +340,10 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
             <input
               id="signup-privacy"
               type="checkbox"
+              required
+              aria-required="true"
+              aria-invalid={!!privacyError}
+              aria-describedby={privacyError ? 'signup-privacy-error' : undefined}
               checked={privacyAccepted}
               onChange={(e) => {
                 setPrivacyAccepted(e.target.checked);
@@ -321,7 +364,9 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           </label>
           {privacyError && (
             <div
-              role="alert"
+              id="signup-privacy-error"
+              role="status"
+              aria-live="polite"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -352,43 +397,64 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
         </div>
 
         {/* Submit Button: Always rendered, disabled by default until form is valid */}
-        <button
-          type="submit"
-          id="signup-submit-button"
-          disabled={isSubmitDisabled}
-          aria-disabled={isSubmitDisabled ? 'true' : 'false'}
-          style={{
-            width: '100%',
-            height: '46px',
-            backgroundColor: isSubmitDisabled
-              ? 'var(--button-disabled-background, var(--color-surface-container-high, #E2E8F0))'
-              : 'var(--button-primary-background, var(--color-primary, #0052FF))',
-            color: isSubmitDisabled
-              ? 'var(--button-disabled-foreground, var(--color-outline, #6B7280))'
-              : 'var(--button-primary-foreground, var(--color-on-primary, #FFFFFF))',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
-            marginTop: '8px',
-            boxShadow: isSubmitDisabled ? 'none' : '0 1px 2px rgba(0, 82, 255, 0.2)',
-            opacity: isSubmitDisabled ? 'var(--state-disabled-opacity, 0.6)' : 1,
-            transition: 'background-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (!isSubmitDisabled) {
-              e.currentTarget.style.backgroundColor = '#0045D8';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isSubmitDisabled) {
-              e.currentTarget.style.backgroundColor = 'var(--button-primary-background, var(--color-primary, #0052FF))';
-            }
-          }}
-        >
-          {isSubmitting ? 'Creating account...' : 'Create Account'}
-        </button>
+        <div>
+          <button
+            type="submit"
+            id="signup-submit-button"
+            disabled={isSubmitDisabled}
+            aria-disabled={isSubmitDisabled ? 'true' : 'false'}
+            aria-describedby={isSubmitDisabled ? 'signup-submit-hint' : undefined}
+            style={{
+              width: '100%',
+              height: '46px',
+              backgroundColor: isSubmitDisabled
+                ? 'var(--button-disabled-background, var(--color-surface-container-high, #E2E8F0))'
+                : 'var(--button-primary-background, var(--color-primary, #0052FF))',
+              color: isSubmitDisabled
+                ? 'var(--button-disabled-foreground, var(--color-outline, #6B7280))'
+                : 'var(--button-primary-foreground, var(--color-on-primary, #FFFFFF))',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
+              marginTop: '8px',
+              boxShadow: isSubmitDisabled ? 'none' : '0 1px 2px rgba(0, 82, 255, 0.2)',
+              opacity: isSubmitDisabled ? 'var(--state-disabled-opacity, 0.6)' : 1,
+              transition: 'background-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitDisabled) {
+                e.currentTarget.style.backgroundColor = '#0045D8';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSubmitDisabled) {
+                e.currentTarget.style.backgroundColor = 'var(--button-primary-background, var(--color-primary, #0052FF))';
+              }
+            }}
+          >
+            {isSubmitting ? 'Creating account...' : 'Create Account'}
+          </button>
+          {isSubmitDisabled && (
+            <span
+              id="signup-submit-hint"
+              style={{
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                padding: 0,
+                margin: '-1px',
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+                whiteSpace: 'nowrap',
+                border: 0,
+              }}
+            >
+              Complete all required fields to activate account creation.
+            </span>
+          )}
+        </div>
 
         {/* Switch to Sign In */}
         <div style={{ textAlign: 'center', marginTop: '4px' }}>
