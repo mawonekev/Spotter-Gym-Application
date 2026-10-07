@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { MemberStatusSummary, SuggestedQuestion, AskQuestionResponse } from '@/lib/types';
 import { DEFAULT_SUGGESTED_QUESTIONS, COPY } from '@/lib/constants';
 import { MemberStatusCard } from '@/components/MemberStatusCard';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { AskInput } from '@/components/AskInput';
 import { CheckInModal } from '@/components/CheckInModal';
-import { AuthModal } from '@/components/AuthModal';
 import { DeskHandoff } from '@/components/DeskHandoff';
 
 /**
@@ -30,7 +30,6 @@ const INITIAL_CACHED_STATUS: MemberStatusSummary = {
 
 export function MemberHomeView() {
   const [status, setStatus] = useState<MemberStatusSummary>(INITIAL_CACHED_STATUS);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
   const [activeAnswer, setActiveAnswer] = useState<AskQuestionResponse | null>(null);
   const [isAsking, setIsAsking] = useState(false);
@@ -38,16 +37,14 @@ export function MemberHomeView() {
 
   // Dynamically update document title based on the active view
   useEffect(() => {
-    if (isAuthOpen) {
-      document.title = 'Sign In | Spotter';
-    } else if (isCheckInOpen) {
+    if (isCheckInOpen) {
       document.title = 'Check In | Spotter';
     } else if (activeAnswer) {
       document.title = 'Record Answer | Spotter';
     } else {
       document.title = 'Spotter | Your personal gym records';
     }
-  }, [isAuthOpen, isCheckInOpen, activeAnswer]);
+  }, [isCheckInOpen, activeAnswer]);
 
   const handleAskQuestion = async (questionText: string) => {
     setIsAsking(true);
@@ -151,11 +148,10 @@ export function MemberHomeView() {
           </span>
         </div>
 
-        {/* Right action: Single 'Get Started' button using primary color, Label Large, and padding */}
-        <button
+        {/* Right action: Single 'Get Started' link pointing to /auth?view=signup */}
+        <Link
           id="header-get-started-btn"
-          type="button"
-          onClick={() => setIsAuthOpen(true)}
+          href="/auth?view=signup"
           style={{
             backgroundColor: 'var(--color-primary)',
             color: 'var(--color-on-primary)',
@@ -166,8 +162,7 @@ export function MemberHomeView() {
             fontWeight: 'var(--button-font-weight, var(--font-weight-medium))',
             lineHeight: 'var(--button-line-height, var(--line-height-20))',
             letterSpacing: 'var(--button-letter-spacing, -0.2px)',
-            border: 'none',
-            cursor: 'pointer',
+            textDecoration: 'none',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -176,7 +171,7 @@ export function MemberHomeView() {
           aria-label="Get Started"
         >
           Get Started
-        </button>
+        </Link>
       </header>
 
       {/* 2. Hero Section: Visually continuous with Header */}
@@ -223,11 +218,10 @@ export function MemberHomeView() {
 
         {/* Spacing between description and CTA: Exactly 1rem */}
         <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center' }}>
-          {/* Exactly one primary CTA: 'Get Started for Free' with shared button padding, radius, Label Large, and primary color */}
-          <button
+          {/* Exactly one primary CTA: 'Get Started for Free' pointing to /auth?view=signup */}
+          <Link
             id="hero-get-started-cta"
-            type="button"
-            onClick={() => setIsAuthOpen(true)}
+            href="/auth?view=signup"
             style={{
               backgroundColor: 'var(--color-primary)',
               color: 'var(--color-on-primary)',
@@ -238,8 +232,7 @@ export function MemberHomeView() {
               fontWeight: 'var(--button-font-weight, var(--font-weight-medium))',
               lineHeight: 'var(--button-line-height, var(--line-height-20))',
               letterSpacing: 'var(--button-letter-spacing, -0.2px)',
-              border: 'none',
-              cursor: 'pointer',
+              textDecoration: 'none',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -248,7 +241,7 @@ export function MemberHomeView() {
             aria-label="Get Started for Free"
           >
             Get Started for Free
-          </button>
+          </Link>
         </div>
       </section>
 
@@ -361,23 +354,6 @@ export function MemberHomeView() {
         isOpen={isCheckInOpen}
         onClose={() => setIsCheckInOpen(false)}
         onCheckIn={handleCheckInSubmit}
-      />
-
-      {/* Sign In / Sign Up Auth Modal */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-        officerName={officerOnDuty}
-        onSuccess={(name) => {
-          if (name) {
-            // Update cached display if needed
-            setStatus((prev) => ({
-              ...prev,
-              firstName: name.split(' ')[0] || prev.firstName,
-              lastName: name.split(' ')[1] || prev.lastName,
-            }));
-          }
-        }}
       />
     </div>
   );
