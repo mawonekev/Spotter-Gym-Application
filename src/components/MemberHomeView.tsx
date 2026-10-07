@@ -148,10 +148,10 @@ export function MemberHomeView() {
           </span>
         </div>
 
-        {/* Right action: Single 'Get Started' link pointing to /auth?view=signup */}
+        {/* Right action: Single 'Get Started' link pointing to /auth?view=signin */}
         <Link
           id="header-get-started-btn"
-          href="/auth?view=signup"
+          href="/auth?view=signin"
           style={{
             backgroundColor: 'var(--color-primary)',
             color: 'var(--color-on-primary)',
@@ -218,10 +218,10 @@ export function MemberHomeView() {
 
         {/* Spacing between description and CTA: Exactly 1rem */}
         <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center' }}>
-          {/* Exactly one primary CTA: 'Get Started for Free' pointing to /auth?view=signup */}
+          {/* Exactly one primary CTA: 'Get Started for Free' pointing to /auth?view=signin */}
           <Link
             id="hero-get-started-cta"
-            href="/auth?view=signup"
+            href="/auth?view=signin"
             style={{
               backgroundColor: 'var(--color-primary)',
               color: 'var(--color-on-primary)',

@@ -180,10 +180,10 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
           Sign In
         </button>
 
-        {/* Toggle to Sign Up */}
-        <div style={{ textAlign: 'center', marginTop: '4px' }}>
+        {/* Toggle to Sign Up (Available at the bottom for new users) */}
+        <div style={{ textAlign: 'center', marginTop: '6px' }}>
           <span style={{ fontSize: '13px', color: 'var(--color-on-surface-variant, #64748B)' }}>
-            Don&apos;t have an account?{' '}
+            New to Spotter?{' '}
           </span>
           <button
             type="button"
