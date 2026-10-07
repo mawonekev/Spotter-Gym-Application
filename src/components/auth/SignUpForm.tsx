@@ -105,8 +105,12 @@ export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setPassword(val);
-    if (touched.password) {
-      setErrors((prev) => ({ ...prev, password: validatePassword(val) }));
+    if (errors.password) {
+      if (val.length >= 8) {
+        setErrors((prev) => ({ ...prev, password: null }));
+      } else if (errors.password === 'This field must not be empty' && val.length > 0) {
+        setErrors((prev) => ({ ...prev, password: null }));
+      }
     }
   };
 
@@ -223,7 +227,11 @@ export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
           onChange={handlePasswordChange}
           onBlur={handlePasswordBlur}
           error={errors.password}
-          helperText="Use at least eight characters."
+          helperText={
+            password.length > 0 && !errors.password
+              ? 'Use at least eight characters.'
+              : undefined
+          }
           rightElement={
             <button
               type="button"
