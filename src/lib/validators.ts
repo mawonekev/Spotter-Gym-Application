@@ -8,6 +8,8 @@ export const ERROR_MESSAGES = {
   EMAIL_INVALID: 'Enter a valid email address',
   PHONE_INVALID: 'Enter a valid mobile number (e.g. 0801 234 5678)',
   PASSWORD_LENGTH: 'Use at least eight characters.',
+  PASSWORDS_DONT_MATCH: 'Passwords do not match',
+  PRIVACY_REQUIRED: 'You must accept the privacy notice to proceed',
 } as const;
 
 /**
@@ -99,3 +101,70 @@ export function validatePassword(value: string): string | null {
 
   return null;
 }
+
+export interface SignUpValues {
+  fullName: string;
+  email: string;
+  phone: string;
+  memberNumber?: string;
+  password: string;
+  confirmPassword?: string;
+  privacyAccepted: boolean;
+}
+
+export type SignUpErrors = {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  memberNumber?: string;
+  password?: string;
+  confirmPassword?: string;
+  privacyAccepted?: string;
+};
+
+/**
+ * Validates all fields of the sign up form and returns an errors object.
+ * An empty errors object ({}) indicates that all fields are valid.
+ */
+export function validateSignUp(values: SignUpValues): SignUpErrors {
+  const errors: SignUpErrors = {};
+
+  const nameError = validateFullName(values.fullName);
+  if (nameError) errors.fullName = nameError;
+
+  const emailError = validateEmail(values.email, false);
+  if (emailError) errors.email = emailError;
+
+  const phoneError = validateRequired(values.phone);
+  if (phoneError) errors.phone = phoneError;
+
+  if (values.memberNumber !== undefined) {
+    const memberNumError = validateRequired(values.memberNumber);
+    if (memberNumError) errors.memberNumber = memberNumError;
+  }
+
+  const passwordError = validatePassword(values.password);
+  if (passwordError) errors.password = passwordError;
+
+  if (values.confirmPassword !== undefined) {
+    if (!values.confirmPassword || values.confirmPassword.trim().length === 0) {
+      errors.confirmPassword = ERROR_MESSAGES.REQUIRED;
+    } else if (values.confirmPassword !== values.password) {
+      errors.confirmPassword = ERROR_MESSAGES.PASSWORDS_DONT_MATCH;
+    }
+  }
+
+  if (!values.privacyAccepted) {
+    errors.privacyAccepted = ERROR_MESSAGES.PRIVACY_REQUIRED;
+  }
+
+  return errors;
+}
+
+/**
+ * Derives whether the sign up form is completely valid based on validateSignUp.
+ */
+export function isSignUpFormValid(values: SignUpValues): boolean {
+  return Object.keys(validateSignUp(values)).length === 0;
+}
+

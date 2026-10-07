@@ -7,22 +7,39 @@ import {
   validateFullName,
   validateEmail,
   validatePassword,
+  validateSignUp,
+  isSignUpFormValid,
+  type SignUpValues,
 } from '@/lib/validators';
 
 export interface SignUpFormProps {
-  onSuccess?: (memberName: string, phone: string) => void;
+  initialValues?: Partial<SignUpValues>;
+  onSuccess?: (memberName: string, phone: string) => void | Promise<void>;
   onSwitchView: (view: 'signin' | 'signup' | 'forgot-password') => void;
 }
 
-export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
-  // Form Values
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [memberNumber, setMemberNumber] = useState('');
-  const [password, setPassword] = useState('');
+export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFormProps) {
+  // Form Values (optionally prefilled from initialValues)
+  const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
+  const [email, setEmail] = useState(initialValues?.email ?? '');
+  const [phone, setPhone] = useState(initialValues?.phone ?? '');
+  const [memberNumber, setMemberNumber] = useState(initialValues?.memberNumber ?? '');
+  const [password, setPassword] = useState(initialValues?.password ?? '');
   const [showPassword, setShowPassword] = useState(false);
-  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(initialValues?.privacyAccepted ?? false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Derive isFormValid from validateSignUp without relying on touched or displayed errors
+  const formValidationErrors = validateSignUp({
+    fullName,
+    email,
+    phone,
+    memberNumber,
+    password,
+    privacyAccepted,
+  });
+  const isFormValid = Object.keys(formValidationErrors).length === 0;
+  const isSubmitDisabled = !isFormValid || isSubmitting;
 
   // Touched state
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -115,38 +132,50 @@ export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
     setErrors((prev) => ({ ...prev, password: validatePassword(password) }));
   };
 
-  // Form Submit
-  const handleSubmit = (e: React.FormEvent) => {
+  // Form Submit: Guards handler by re-running validateSignUp
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Mark all touched
-    setTouched({
-      fullName: true,
-      email: true,
-      phone: true,
-      memberNumber: true,
-      password: true,
+    if (isSubmitting) return;
+
+    // Re-run validateSignUp to guard submit handler (e.g. Enter pressed)
+    const validationErrors = validateSignUp({
+      fullName,
+      email,
+      phone,
+      memberNumber,
+      password,
+      privacyAccepted,
     });
 
-    // Validate all
-    const nameErr = validateFullName(fullName);
-    const emailErr = validateEmail(email, false);
-    const phoneErr = validateRequired(phone);
-    const memberNumErr = validateRequired(memberNumber);
-    const passwordErr = validatePassword(password);
-    const privErr = privacyAccepted ? null : 'You must accept the privacy notice to proceed';
+    const hasErrors = Object.keys(validationErrors).length > 0;
 
-    setErrors({
-      fullName: nameErr,
-      email: emailErr,
-      phone: phoneErr,
-      memberNumber: memberNumErr,
-      password: passwordErr,
-    });
-    setPrivacyError(privErr);
+    if (hasErrors) {
+      // Mark all fields as touched so inline errors appear on every invalid field
+      setTouched({
+        fullName: true,
+        email: true,
+        phone: true,
+        memberNumber: true,
+        password: true,
+      });
 
-    if (!nameErr && !emailErr && !phoneErr && !memberNumErr && !passwordErr && !privErr) {
-      onSuccess?.(fullName, phone);
+      setErrors({
+        fullName: validationErrors.fullName || null,
+        email: validationErrors.email || null,
+        phone: validationErrors.phone || null,
+        memberNumber: validationErrors.memberNumber || null,
+        password: validationErrors.password || null,
+      });
+      setPrivacyError(validationErrors.privacyAccepted || null);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await onSuccess?.(fullName, phone);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -322,31 +351,43 @@ export function SignUpForm({ onSuccess, onSwitchView }: SignUpFormProps) {
           )}
         </div>
 
-        {/* Submit Button */}
+        {/* Submit Button: Always rendered, disabled by default until form is valid */}
         <button
           type="submit"
+          id="signup-submit-button"
+          disabled={isSubmitDisabled}
+          aria-disabled={isSubmitDisabled ? 'true' : 'false'}
           style={{
             width: '100%',
             height: '46px',
-            backgroundColor: 'var(--color-primary, #0052FF)',
-            color: 'var(--color-on-primary, #FFFFFF)',
+            backgroundColor: isSubmitDisabled
+              ? 'var(--button-disabled-background, var(--color-surface-container-high, #E2E8F0))'
+              : 'var(--button-primary-background, var(--color-primary, #0052FF))',
+            color: isSubmitDisabled
+              ? 'var(--button-disabled-foreground, var(--color-outline, #6B7280))'
+              : 'var(--button-primary-foreground, var(--color-on-primary, #FFFFFF))',
             border: 'none',
             borderRadius: '6px',
             fontSize: '14px',
             fontWeight: 600,
-            cursor: 'pointer',
+            cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
             marginTop: '8px',
-            boxShadow: '0 1px 2px rgba(0, 82, 255, 0.2)',
-            transition: 'background-color 0.15s ease',
+            boxShadow: isSubmitDisabled ? 'none' : '0 1px 2px rgba(0, 82, 255, 0.2)',
+            opacity: isSubmitDisabled ? 'var(--state-disabled-opacity, 0.6)' : 1,
+            transition: 'background-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#0045D8';
+            if (!isSubmitDisabled) {
+              e.currentTarget.style.backgroundColor = '#0045D8';
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--color-primary, #0052FF)';
+            if (!isSubmitDisabled) {
+              e.currentTarget.style.backgroundColor = 'var(--button-primary-background, var(--color-primary, #0052FF))';
+            }
           }}
         >
-          Create Account
+          {isSubmitting ? 'Creating account...' : 'Create Account'}
         </button>
 
         {/* Switch to Sign In */}
