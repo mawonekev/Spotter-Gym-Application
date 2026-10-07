@@ -1,941 +1,1102 @@
 'use client';
 
 import React, { useState } from 'react';
-import { COPY } from '../lib/constants';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (memberName?: string) => void;
-  initialMode?: 'signin' | 'signup';
+  onSuccess?: (memberName: string, phone: string) => void;
+  initialMode?: 'signup' | 'signin';
   officerName?: string;
 }
 
-type ActivationStep = 'code' | 'privacy' | 'pin';
+/**
+ * Normalizes phone numbers by removing spaces, hyphens, and parentheses
+ */
+function cleanPhoneNumber(raw: string): string {
+  return raw.replace(/[\s\-\(\)]/g, '');
+}
+
+/**
+ * Validates Nigerian or international mobile numbers
+ */
+function isValidPhoneNumber(phone: string): boolean {
+  const cleaned = cleanPhoneNumber(phone);
+  const nigerianRegex = /^(?:\+?234|0)[789][01]\d{8}$/;
+  const generalRegex = /^\+?[1-9]\d{9,13}$/;
+  return nigerianRegex.test(cleaned) || generalRegex.test(cleaned);
+}
+
+/**
+ * Validates standard email address
+ */
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+}
 
 export function AuthModal({
   isOpen,
   onClose,
   onSuccess,
-  initialMode = 'signin',
-  officerName = 'Ngozi',
+  initialMode = 'signup',
 }: AuthModalProps) {
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'signup' | 'signin'>(initialMode);
 
-  // Sign In State
-  const [signInPin, setSignInPin] = useState('');
-  const [signInError, setSignInError] = useState<string | null>(null);
-  const [isSignInSubmitting, setIsSignInSubmitting] = useState(false);
-
-  // Sign Up / Activation State
-  const [activationStep, setActivationStep] = useState<ActivationStep>('code');
-  const [activationCode, setActivationCode] = useState('');
-  const [activationError, setActivationError] = useState<string | null>(null);
+  // Sign Up Form Fields
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [memberNumber, setMemberNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Sign In Form Fields
+  const [signInPhone, setSignInPhone] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
+  const [showSignInPassword, setShowSignInPassword] = useState(false);
+
+  // Errors state
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [successFeedback, setSuccessFeedback] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  // Handle Sign In PIN digit input
-  const handleSignInDigit = (digit: string) => {
-    if (signInPin.length < 4) {
-      const nextPin = signInPin + digit;
-      setSignInPin(nextPin);
-      setSignInError(null);
-      if (nextPin.length === 4) {
-        submitSignIn(nextPin);
-      }
-    }
-  };
+  // Validation Icon
+  const WarningIcon = () => (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="#DC2626"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M7.126 1.954c.385-.667 1.363-.667 1.748 0l6.084 10.54c.385.667-.104 1.506-.874 1.506H1.916c-.77 0-1.259-.839-.874-1.506L7.126 1.954zM8 6v4M8 12.5v.5" />
+    </svg>
+  );
 
-  const handleSignInBackspace = () => {
-    setSignInPin((prev) => prev.slice(0, -1));
-    setSignInError(null);
-  };
-
-  const submitSignIn = async (pin: string) => {
-    setIsSignInSubmitting(true);
-    setSignInError(null);
-
-    // In version one, default member Chioma Adeyemi PIN is 1234
-    setTimeout(() => {
-      setIsSignInSubmitting(false);
-      if (pin === '1234' || pin === '4821') {
-        setSuccessMessage('Signed in.');
-        setTimeout(() => {
-          setSignInPin('');
-          setSuccessMessage(null);
-          onSuccess?.('Chioma Adeyemi');
-          onClose();
-        }, 800);
-      } else {
-        setSignInError('That PIN is not correct. Try again.');
-        setSignInPin('');
-      }
-    }, 400);
-  };
-
-  // Handle Activation Code Submit
-  const handleVerifyActivationCode = (e: React.FormEvent) => {
+  // Handle Sign Up Submit
+  const handleSignUpSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setActivationError(null);
+    setSubmitted(true);
+    const newErrors: Record<string, string> = {};
 
-    const cleanCode = activationCode.trim().toUpperCase();
-    if (cleanCode.length !== 8) {
-      setActivationError(COPY.ACTIVATION_INVALID_CODE);
-      return;
+    if (!fullName.trim()) {
+      newErrors.fullName = 'This field must not be empty';
+    } else if (fullName.trim().split(/\s+/).length < 2) {
+      newErrors.fullName = 'Please enter both your first and last name';
     }
 
-    // Accept valid 8-character uppercase alphanumeric code per FR-1
-    if (/^[A-Z0-9]{8}$/.test(cleanCode)) {
-      setActivationStep('privacy');
-    } else {
-      setActivationError(COPY.ACTIVATION_INVALID_CODE);
+    if (!email.trim()) {
+      newErrors.email = 'This field must not be empty';
+    } else if (!isValidEmail(email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    if (!phone.trim()) {
+      newErrors.phone = 'This field must not be empty';
+    } else if (!isValidPhoneNumber(phone)) {
+      newErrors.phone = 'Please enter a valid mobile number (e.g. 0801 234 5678)';
+    }
+
+    if (!memberNumber.trim()) {
+      newErrors.memberNumber = 'This field must not be empty';
+    }
+
+    if (!password) {
+      newErrors.password = 'This field must not be empty';
+    } else if (password.length < 8) {
+      newErrors.password = 'Use at least eight characters.';
+    }
+
+    if (!privacyAccepted) {
+      newErrors.privacy = 'You must accept the privacy notice to proceed';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length === 0) {
+      setSuccessFeedback(`Account created! Welcome, ${fullName.split(' ')[0]}.`);
+      setTimeout(() => {
+        onSuccess?.(fullName, phone);
+        setSuccessFeedback(null);
+        resetState();
+        onClose();
+      }, 1000);
     }
   };
 
-  // Handle Privacy Notice Acceptance
-  const handleAcceptPrivacy = () => {
-    if (privacyAccepted) {
-      setActivationStep('pin');
+  // Handle Sign In Submit
+  const handleSignInSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitted(true);
+    const newErrors: Record<string, string> = {};
+
+    if (!signInPhone.trim()) {
+      newErrors.signInPhone = 'This field must not be empty';
+    } else if (!isValidPhoneNumber(signInPhone)) {
+      newErrors.signInPhone = 'Please enter a valid mobile number (e.g. 0801 234 5678)';
+    }
+
+    if (!signInPassword) {
+      newErrors.signInPassword = 'This field must not be empty';
+    } else if (signInPassword.length < 4) {
+      newErrors.signInPassword = 'Password must be at least four characters';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length === 0) {
+      setSuccessFeedback('Signed in successfully.');
+      setTimeout(() => {
+        onSuccess?.('Chioma Adeyemi', signInPhone);
+        setSuccessFeedback(null);
+        resetState();
+        onClose();
+      }, 900);
     }
   };
 
-  // Handle New PIN Input for Activation
-  const handleNewPinDigit = (digit: string) => {
-    if (newPin.length < 4) {
-      const updated = newPin + digit;
-      setNewPin(updated);
-      setPinError(null);
-    } else if (confirmPin.length < 4) {
-      const updatedConfirm = confirmPin + digit;
-      setConfirmPin(updatedConfirm);
-      setPinError(null);
-    }
-  };
-
-  const handleNewPinBackspace = () => {
-    if (confirmPin.length > 0) {
-      setConfirmPin((prev) => prev.slice(0, -1));
-    } else if (newPin.length > 0) {
-      setNewPin((prev) => prev.slice(0, -1));
-    }
-    setPinError(null);
-  };
-
-  const handleCompleteActivation = () => {
-    if (newPin.length !== 4) {
-      setPinError('Please enter a 4-digit PIN.');
-      return;
-    }
-    if (newPin !== confirmPin) {
-      setPinError('The two PINs do not match. Please try again.');
-      setConfirmPin('');
-      return;
-    }
-
-    setSuccessMessage('Account activated. Welcome to Spotter!');
-    setTimeout(() => {
-      setSuccessMessage(null);
-      setActivationCode('');
-      setNewPin('');
-      setConfirmPin('');
-      setActivationStep('code');
-      onSuccess?.('Chioma Adeyemi');
-      onClose();
-    }, 1000);
-  };
-
-  const resetAll = () => {
-    setSignInPin('');
-    setSignInError(null);
-    setActivationCode('');
-    setActivationError(null);
-    setActivationStep('code');
+  const resetState = () => {
+    setFullName('');
+    setEmail('');
+    setPhone('');
+    setMemberNumber('');
+    setPassword('');
+    setShowPassword(false);
     setPrivacyAccepted(false);
-    setNewPin('');
-    setConfirmPin('');
-    setPinError(null);
-    setSuccessMessage(null);
-    onClose();
+    setSignInPhone('');
+    setSignInPassword('');
+    setShowSignInPassword(false);
+    setErrors({});
+    setSubmitted(false);
   };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Member Authentication"
+      aria-label={mode === 'signup' ? 'Create Account' : 'Sign In'}
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'var(--color-scrim)',
+        backgroundColor: 'rgba(15, 23, 42, 0.65)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 'var(--z-index-modal)',
-        padding: 'var(--spacing-4)',
+        justifyContent: 'flex-start',
+        zIndex: 1300,
+        overflowY: 'auto',
+        padding: '24px 16px',
         boxSizing: 'border-box',
       }}
     >
+      {/* Top Header Bar per screenshot */}
       <div
         style={{
           width: '100%',
-          maxWidth: '440px',
-          backgroundColor: 'var(--color-surface)',
-          borderRadius: 'var(--radius-xl)',
-          padding: 'var(--spacing-6) var(--spacing-6)',
+          maxWidth: '460px',
           display: 'flex',
-          flexDirection: 'column',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: 'var(--spacing-4)',
-          boxShadow: 'var(--elevation-level4)',
+          marginBottom: '16px',
+          padding: '0 4px',
           boxSizing: 'border-box',
-          maxHeight: '90vh',
-          overflowY: 'auto',
         }}
       >
-        {/* Top Header & Close Button */}
-        <div
+        <button
+          type="button"
+          onClick={() => {
+            resetState();
+            onClose();
+          }}
           style={{
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'space-between',
+            background: 'none',
+            border: 'none',
+            color: '#1E293B',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            padding: '4px 0',
+            display: 'inline-flex',
             alignItems: 'center',
+            gap: '4px',
           }}
         >
-          {/* Mode Switcher Tabs */}
-          <div
-            style={{
-              display: 'flex',
-              backgroundColor: 'var(--color-surface-container-low)',
-              borderRadius: 'var(--radius-full)',
-              padding: '3px',
-              gap: '2px',
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signin');
-                setSuccessMessage(null);
-              }}
-              style={{
-                border: 'none',
-                backgroundColor:
-                  mode === 'signin' ? 'var(--color-primary)' : 'transparent',
-                color:
-                  mode === 'signin'
-                    ? 'var(--color-on-primary)'
-                    : 'var(--color-on-surface-variant)',
-                padding: 'var(--spacing-2) var(--spacing-4)',
-                borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--font-size-12)',
-                fontWeight: 'var(--font-weight-semi-bold)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signup');
-                setSuccessMessage(null);
-              }}
-              style={{
-                border: 'none',
-                backgroundColor:
-                  mode === 'signup' ? 'var(--color-primary)' : 'transparent',
-                color:
-                  mode === 'signup'
-                    ? 'var(--color-on-primary)'
-                    : 'var(--color-on-surface-variant)',
-                padding: 'var(--spacing-2) var(--spacing-4)',
-                borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--font-size-12)',
-                fontWeight: 'var(--font-weight-semi-bold)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              Activate / Sign Up
-            </button>
-          </div>
+          <span aria-hidden="true">&larr;</span> Back to Spotter
+        </button>
 
-          <button
-            type="button"
-            onClick={resetAll}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-on-surface-variant)',
-              cursor: 'pointer',
-              padding: 'var(--spacing-2)',
-              fontSize: 'var(--font-size-14)',
-              fontWeight: 'var(--font-weight-medium)',
-            }}
-            aria-label="Close dialog"
-          >
-            Cancel
-          </button>
-        </div>
+        <span
+          style={{
+            fontSize: '13px',
+            color: '#64748B',
+            fontWeight: 400,
+          }}
+        >
+          Official Member App
+        </span>
+      </div>
 
-        {/* Success Feedback Display */}
-        {successMessage ? (
+      {/* Main Form Card per screenshot */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '460px',
+          backgroundColor: '#FFFFFF',
+          borderRadius: '8px',
+          padding: '32px 32px 36px',
+          boxSizing: 'border-box',
+          boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04)',
+          border: '1px solid #E2E8F0',
+          marginBottom: '24px',
+        }}
+      >
+        {successFeedback ? (
           <div
             style={{
               textAlign: 'center',
-              padding: 'var(--spacing-8) 0',
+              padding: '36px 0',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 'var(--spacing-3)',
+              gap: '12px',
             }}
           >
             <div
               style={{
                 width: '48px',
                 height: '48px',
-                borderRadius: 'var(--radius-full)',
-                backgroundColor: 'var(--color-success-container)',
-                color: 'var(--color-on-success-container)',
+                borderRadius: '50%',
+                backgroundColor: '#DCFCE7',
+                color: '#16A34A',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '24px',
+                fontSize: '22px',
                 fontWeight: 'bold',
               }}
             >
               ✓
             </div>
-            <p
+            <h3
               style={{
-                fontSize: 'var(--font-size-18)',
-                fontWeight: 'var(--font-weight-semi-bold)',
-                color: 'var(--color-on-surface)',
+                fontSize: '18px',
+                fontWeight: 700,
+                color: '#0F172A',
                 margin: 0,
               }}
             >
-              {successMessage}
+              {successFeedback}
+            </h3>
+            <p style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
+              Entering your gym portal...
             </p>
           </div>
-        ) : mode === 'signin' ? (
-          /* ==================== SIGN IN FLOW ==================== */
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 'var(--spacing-4)',
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <h2
+        ) : mode === 'signup' ? (
+          /* ==============================================================
+             CREATE ACCOUNT (SIGN UP) FORM
+             ============================================================== */
+          <div>
+            {/* Header Badge */}
+            <div style={{ marginBottom: '16px' }}>
+              <span
                 style={{
-                  fontSize: 'var(--font-size-22)',
-                  fontWeight: 'var(--font-weight-bold)',
-                  color: 'var(--color-on-surface)',
-                  margin: '0 0 var(--spacing-1) 0',
+                  backgroundColor: '#0052FF',
+                  color: '#FFFFFF',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '1.2px',
+                  padding: '5px 10px',
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  textTransform: 'uppercase',
+                  lineHeight: '1',
                 }}
               >
-                Sign In
-              </h2>
-              <p
-                style={{
-                  fontSize: 'var(--font-size-14)',
-                  color: 'var(--color-on-surface-variant)',
-                  margin: 0,
-                }}
-              >
-                Enter your 4-digit PIN to access your gym records.
-              </p>
+                SPOTTER
+              </span>
             </div>
 
-            {/* 4-Digit PIN Boxes */}
-            <div
+            {/* Main Title & Subtitle */}
+            <h1
               style={{
-                display: 'flex',
-                gap: 'var(--spacing-3)',
-                margin: 'var(--spacing-2) 0',
-              }}
-              aria-label="4-digit PIN entry"
-            >
-              {[0, 1, 2, 3].map((index) => {
-                const filled = signInPin.length > index;
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      width: '48px',
-                      height: '56px',
-                      borderRadius: 'var(--radius-md)',
-                      border: `2px solid ${
-                        filled
-                          ? 'var(--color-primary)'
-                          : 'var(--border-color-default)'
-                      }`,
-                      backgroundColor: filled
-                        ? 'var(--color-primary-container)'
-                        : 'var(--color-surface)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 'var(--font-size-22)',
-                      fontWeight: 'var(--font-weight-bold)',
-                      color: 'var(--color-on-primary-container)',
-                    }}
-                  >
-                    {filled ? '•' : ''}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Error Message */}
-            {signInError && (
-              <p
-                style={{
-                  color: 'var(--color-error)',
-                  fontSize: 'var(--font-size-12)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  margin: 0,
-                  textAlign: 'center',
-                }}
-              >
-                {signInError}
-              </p>
-            )}
-
-            {/* On-screen Numeric Keypad */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 'var(--spacing-2)',
-                width: '100%',
-                maxWidth: '280px',
+                fontSize: '24px',
+                fontWeight: 800,
+                color: '#0F172A',
+                margin: '0 0 6px 0',
+                letterSpacing: '-0.3px',
+                lineHeight: '1.2',
               }}
             >
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                <button
-                  key={digit}
-                  type="button"
-                  disabled={isSignInSubmitting}
-                  onClick={() => handleSignInDigit(digit)}
-                  style={{
-                    height: '52px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color-subtle)',
-                    backgroundColor: 'var(--color-surface-container)',
-                    color: 'var(--color-on-surface)',
-                    fontSize: 'var(--font-size-22)',
-                    fontWeight: 'var(--font-weight-medium)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {digit}
-                </button>
-              ))}
-              <div />
-              <button
-                type="button"
-                disabled={isSignInSubmitting}
-                onClick={() => handleSignInDigit('0')}
-                style={{
-                  height: '52px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color-subtle)',
-                  backgroundColor: 'var(--color-surface-container)',
-                  color: 'var(--color-on-surface)',
-                  fontSize: 'var(--font-size-22)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                0
-              </button>
-              <button
-                type="button"
-                disabled={isSignInSubmitting}
-                onClick={handleSignInBackspace}
-                style={{
-                  height: '52px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color-subtle)',
-                  backgroundColor: 'var(--color-surface-container)',
-                  color: 'var(--color-on-surface)',
-                  fontSize: 'var(--font-size-14)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                aria-label="Backspace"
-              >
-                ⌫
-              </button>
-            </div>
+              Create Account
+            </h1>
+            <p
+              style={{
+                fontSize: '13px',
+                color: '#64748B',
+                margin: '0 0 20px 0',
+                lineHeight: '1.45',
+              }}
+            >
+              Link your gym card to activate your personal Spotter portal.
+            </p>
 
-            {/* Switch Helper */}
-            <div style={{ textAlign: 'center', marginTop: 'var(--spacing-2)' }}>
-              <button
-                type="button"
-                onClick={() => setMode('signup')}
+            {/* Form Fields */}
+            <form onSubmit={handleSignUpSubmit} noValidate>
+              <div
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--color-primary)',
-                  fontSize: 'var(--font-size-12)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  padding: 'var(--spacing-1)',
-                }}
-              >
-                First time or new device? Activate with your code
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* ==================== SIGN UP / ACTIVATION FLOW ==================== */
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 'var(--spacing-4)',
-            }}
-          >
-            {activationStep === 'code' && (
-              <form
-                onSubmit={handleVerifyActivationCode}
-                style={{
-                  width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-4)',
+                  gap: '18px',
+                  borderTop: '1px solid #F1F5F9',
+                  paddingTop: '20px',
                 }}
               >
-                <div style={{ textAlign: 'center' }}>
-                  <h2
+                {/* 1. Full Name */}
+                <div>
+                  <label
+                    htmlFor="field-fullname"
                     style={{
-                      fontSize: 'var(--font-size-22)',
-                      fontWeight: 'var(--font-weight-bold)',
-                      color: 'var(--color-on-surface)',
-                      margin: '0 0 var(--spacing-1) 0',
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
                     }}
                   >
-                    {COPY.ACTIVATION_TITLE}
-                  </h2>
-                  <p
-                    style={{
-                      fontSize: 'var(--font-size-14)',
-                      color: 'var(--color-on-surface-variant)',
-                      margin: 0,
-                    }}
-                  >
-                    {COPY.ACTIVATION_HELPER}
-                  </p>
-                </div>
-
-                <div style={{ width: '100%', maxWidth: '320px' }}>
+                    Full Name
+                  </label>
                   <input
-                    id="activation-code-input"
+                    id="field-fullname"
                     type="text"
-                    maxLength={8}
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    spellCheck="false"
-                    value={activationCode}
+                    value={fullName}
                     onChange={(e) => {
-                      setActivationCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
-                      setActivationError(null);
+                      setFullName(e.target.value);
+                      if (errors.fullName) {
+                        setErrors((prev) => ({ ...prev, fullName: '' }));
+                      }
                     }}
-                    placeholder="e.g. SP42XK89"
+                    placeholder="Chioma Adeyemi"
+                    autoComplete="name"
                     style={{
                       width: '100%',
-                      height: '54px',
-                      borderRadius: 'var(--radius-md)',
-                      border: `2px solid ${
-                        activationError
-                          ? 'var(--color-error)'
-                          : 'var(--border-color-default)'
+                      height: '44px',
+                      backgroundColor: '#F1F5F9',
+                      border: `1px solid ${
+                        errors.fullName ? '#DC2626' : '#E2E8F0'
                       }`,
-                      backgroundColor: 'var(--color-surface)',
-                      color: 'var(--color-on-surface)',
-                      fontSize: 'var(--font-size-22)',
-                      fontWeight: 'var(--font-weight-bold)',
-                      textAlign: 'center',
-                      letterSpacing: '4px',
+                      borderRadius: '6px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                      color: '#0F172A',
                       boxSizing: 'border-box',
+                      outline: 'none',
                     }}
                   />
+                  {errors.fullName && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.fullName}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Email Address */}
+                <div>
+                  <label
+                    htmlFor="field-email"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Email Address
+                  </label>
+                  <input
+                    id="field-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errors.email) {
+                        setErrors((prev) => ({ ...prev, email: '' }));
+                      }
+                    }}
+                    placeholder="chioma@example.com"
+                    autoComplete="email"
+                    style={{
+                      width: '100%',
+                      height: '44px',
+                      backgroundColor: '#F1F5F9',
+                      border: `1px solid ${
+                        errors.email ? '#DC2626' : '#E2E8F0'
+                      }`,
+                      borderRadius: '6px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                      color: '#0F172A',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  {errors.email && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Mobile Number */}
+                <div>
+                  <label
+                    htmlFor="field-phone"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Mobile Number
+                  </label>
+                  <input
+                    id="field-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (errors.phone) {
+                        setErrors((prev) => ({ ...prev, phone: '' }));
+                      }
+                    }}
+                    placeholder="0801 234 5678"
+                    autoComplete="tel"
+                    style={{
+                      width: '100%',
+                      height: '44px',
+                      backgroundColor: '#F1F5F9',
+                      border: `1px solid ${
+                        errors.phone ? '#DC2626' : '#E2E8F0'
+                      }`,
+                      borderRadius: '6px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                      color: '#0F172A',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  {errors.phone ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.phone}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748B',
+                        marginTop: '4px',
+                      }}
+                    >
+                      Used for mobile sign-in authentication.
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Member Number (as shown in screenshot) */}
+                <div>
+                  <label
+                    htmlFor="field-membernumber"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Member Number
+                  </label>
+                  <input
+                    id="field-membernumber"
+                    type="text"
+                    value={memberNumber}
+                    onChange={(e) => {
+                      setMemberNumber(e.target.value);
+                      if (errors.memberNumber) {
+                        setErrors((prev) => ({ ...prev, memberNumber: '' }));
+                      }
+                    }}
+                    placeholder="e.g. 1042"
+                    style={{
+                      width: '100%',
+                      height: '44px',
+                      backgroundColor: '#F1F5F9',
+                      border: `1px solid ${
+                        errors.memberNumber ? '#DC2626' : '#E2E8F0'
+                      }`,
+                      borderRadius: '6px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                      color: '#0F172A',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  {errors.memberNumber ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.memberNumber}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748B',
+                        marginTop: '4px',
+                      }}
+                    >
+                      Enter the member number on your gym card.
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Password Field with Show/Hide toggle button */}
+                <div>
+                  <label
+                    htmlFor="field-password"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Password
+                  </label>
                   <div
                     style={{
-                      fontSize: 'var(--font-size-11)',
-                      color: 'var(--color-on-surface-variant)',
-                      textAlign: 'center',
-                      marginTop: 'var(--spacing-1)',
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      width: '100%',
                     }}
                   >
-                    8 characters issued by the gym
-                  </div>
-                </div>
-
-                {activationError && (
-                  <p
-                    style={{
-                      color: 'var(--color-error)',
-                      fontSize: 'var(--font-size-12)',
-                      fontWeight: 'var(--font-weight-medium)',
-                      margin: 0,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {activationError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={activationCode.length !== 8}
-                  style={{
-                    width: '100%',
-                    maxWidth: '320px',
-                    height: '48px',
-                    backgroundColor:
-                      activationCode.length === 8
-                        ? 'var(--color-primary)'
-                        : 'var(--color-surface-container-high)',
-                    color:
-                      activationCode.length === 8
-                        ? 'var(--color-on-primary)'
-                        : 'var(--color-on-surface-variant)',
-                    borderRadius: 'var(--radius-md)',
-                    border: 'none',
-                    fontWeight: 'var(--font-weight-semi-bold)',
-                    fontSize: 'var(--font-size-14)',
-                    cursor: activationCode.length === 8 ? 'pointer' : 'not-allowed',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  Verify Code
-                </button>
-
-                <a
-                  href={`https://wa.me/?text=Hello%20${encodeURIComponent(
-                    officerName
-                  )},%20I%20need%20an%20activation%20code%20for%20Spotter.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: 'var(--color-primary)',
-                    fontSize: 'var(--font-size-12)',
-                    fontWeight: 'var(--font-weight-medium)',
-                    textDecoration: 'none',
-                    marginTop: 'var(--spacing-1)',
-                  }}
-                >
-                  Message {officerName} on WhatsApp
-                </a>
-              </form>
-            )}
-
-            {activationStep === 'privacy' && (
-              /* Privacy Notice Screen (FR-58) */
-              <div
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--spacing-3)',
-                }}
-              >
-                <h2
-                  style={{
-                    fontSize: 'var(--font-size-22)',
-                    fontWeight: 'var(--font-weight-bold)',
-                    color: 'var(--color-on-surface)',
-                    margin: 0,
-                  }}
-                >
-                  Privacy Notice
-                </h2>
-
-                <div
-                  style={{
-                    backgroundColor: 'var(--color-surface-container-low)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--spacing-4)',
-                    border: '1px solid var(--border-color-subtle)',
-                    fontSize: 'var(--font-size-12)',
-                    lineHeight: 'var(--line-height-20)',
-                    color: 'var(--color-on-surface-variant)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 'var(--spacing-2)',
-                  }}
-                >
-                  <p style={{ margin: 0 }}>
-                    <strong>What is stored:</strong> Your check-in attendance, question logs, and payment receipts.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Who controls your data:</strong> The gym is the data controller. The software developer is a data processor acting strictly on gym instructions under the Nigeria Data Protection Act.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>How long it is kept:</strong> Attendance, question logs, and access records are kept for 24 months. Payment receipts are retained for 7 years for financial compliance.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Your rights:</strong> You may request a complete copy of your records or ask for deletion anytime by messaging the front desk on WhatsApp.
-                  </p>
-                </div>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--spacing-2)',
-                    fontSize: 'var(--font-size-12)',
-                    color: 'var(--color-on-surface)',
-                    cursor: 'pointer',
-                    marginTop: 'var(--spacing-1)',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={privacyAccepted}
-                    onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <span>I understand and accept this privacy notice.</span>
-                </label>
-
-                <button
-                  type="button"
-                  disabled={!privacyAccepted}
-                  onClick={handleAcceptPrivacy}
-                  style={{
-                    width: '100%',
-                    height: '48px',
-                    backgroundColor: privacyAccepted
-                      ? 'var(--color-primary)'
-                      : 'var(--color-surface-container-high)',
-                    color: privacyAccepted
-                      ? 'var(--color-on-primary)'
-                      : 'var(--color-on-surface-variant)',
-                    borderRadius: 'var(--radius-md)',
-                    border: 'none',
-                    fontWeight: 'var(--font-weight-semi-bold)',
-                    fontSize: 'var(--font-size-14)',
-                    cursor: privacyAccepted ? 'pointer' : 'not-allowed',
-                    marginTop: 'var(--spacing-2)',
-                  }}
-                >
-                  Accept and Set PIN
-                </button>
-              </div>
-            )}
-
-            {activationStep === 'pin' && (
-              /* Set 4-Digit PIN Screen (FR-3) */
-              <div
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 'var(--spacing-4)',
-                }}
-              >
-                <div style={{ textAlign: 'center' }}>
-                  <h2
-                    style={{
-                      fontSize: 'var(--font-size-22)',
-                      fontWeight: 'var(--font-weight-bold)',
-                      color: 'var(--color-on-surface)',
-                      margin: '0 0 var(--spacing-1) 0',
-                    }}
-                  >
-                    Set your 4-digit PIN
-                  </h2>
-                  <p
-                    style={{
-                      fontSize: 'var(--font-size-14)',
-                      color: 'var(--color-on-surface-variant)',
-                      margin: 0,
-                    }}
-                  >
-                    {newPin.length < 4
-                      ? 'Choose a 4-digit PIN to secure your account.'
-                      : 'Re-enter your 4-digit PIN to confirm.'}
-                  </p>
-                </div>
-
-                {/* Display Dots */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
-                    {[0, 1, 2, 3].map((idx) => {
-                      const isEntered =
-                        newPin.length < 4
-                          ? newPin.length > idx
-                          : confirmPin.length > idx;
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            width: '40px',
-                            height: '48px',
-                            borderRadius: 'var(--radius-md)',
-                            border: `2px solid ${
-                              isEntered
-                                ? 'var(--color-primary)'
-                                : 'var(--border-color-default)'
-                            }`,
-                            backgroundColor: isEntered
-                              ? 'var(--color-primary-container)'
-                              : 'var(--color-surface)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 'var(--font-size-22)',
-                            fontWeight: 'var(--font-weight-bold)',
-                            color: 'var(--color-on-primary-container)',
-                          }}
-                        >
-                          {isEntered ? '•' : ''}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <span style={{ fontSize: 'var(--font-size-11)', color: 'var(--color-on-surface-variant)' }}>
-                    {newPin.length < 4 ? 'Step 1: Choose PIN' : 'Step 2: Confirm PIN'}
-                  </span>
-                </div>
-
-                {pinError && (
-                  <p
-                    style={{
-                      color: 'var(--color-error)',
-                      fontSize: 'var(--font-size-12)',
-                      fontWeight: 'var(--font-weight-medium)',
-                      margin: 0,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {pinError}
-                  </p>
-                )}
-
-                {/* Keypad for setting PIN */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 'var(--spacing-2)',
-                    width: '100%',
-                    maxWidth: '280px',
-                  }}
-                >
-                  {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                    <button
-                      key={digit}
-                      type="button"
-                      onClick={() => handleNewPinDigit(digit)}
+                    <input
+                      id="field-password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (errors.password) {
+                          setErrors((prev) => ({ ...prev, password: '' }));
+                        }
+                      }}
+                      placeholder=""
                       style={{
-                        height: '50px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--border-color-subtle)',
-                        backgroundColor: 'var(--color-surface-container)',
-                        color: 'var(--color-on-surface)',
-                        fontSize: 'var(--font-size-22)',
-                        fontWeight: 'var(--font-weight-medium)',
+                        flex: 1,
+                        height: '44px',
+                        backgroundColor: '#F1F5F9',
+                        border: `1px solid ${
+                          errors.password ? '#DC2626' : '#E2E8F0'
+                        }`,
+                        borderRight: 'none',
+                        borderRadius: '6px 0 0 6px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                        color: '#0F172A',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        backgroundColor: '#E2E8F0',
+                        border: `1px solid ${
+                          errors.password ? '#DC2626' : '#E2E8F0'
+                        }`,
+                        borderRadius: '0 6px 6px 0',
+                        padding: '0 16px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: '#475569',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        userSelect: 'none',
                       }}
                     >
-                      {digit}
+                      {showPassword ? 'Hide' : 'Show'}
                     </button>
-                  ))}
-                  <div />
-                  <button
-                    type="button"
-                    onClick={() => handleNewPinDigit('0')}
-                    style={{
-                      height: '50px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-color-subtle)',
-                      backgroundColor: 'var(--color-surface-container)',
-                      color: 'var(--color-on-surface)',
-                      fontSize: 'var(--font-size-22)',
-                      fontWeight: 'var(--font-weight-medium)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    0
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNewPinBackspace}
-                    style={{
-                      height: '50px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-color-subtle)',
-                      backgroundColor: 'var(--color-surface-container)',
-                      color: 'var(--color-on-surface)',
-                      fontSize: 'var(--font-size-14)',
-                      fontWeight: 'var(--font-weight-medium)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                    aria-label="Backspace"
-                  >
-                    ⌫
-                  </button>
+                  </div>
+                  {errors.password ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.password}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748B',
+                        marginTop: '4px',
+                      }}
+                    >
+                      Use at least eight characters.
+                    </div>
+                  )}
                 </div>
 
-                {newPin.length === 4 && confirmPin.length === 4 && (
-                  <button
-                    type="button"
-                    onClick={handleCompleteActivation}
+                {/* 6. Consent Checkbox */}
+                <div style={{ marginTop: '4px' }}>
+                  <label
                     style={{
-                      width: '100%',
-                      maxWidth: '280px',
-                      height: '48px',
-                      backgroundColor: 'var(--color-primary)',
-                      color: 'var(--color-on-primary)',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      fontWeight: 'var(--font-weight-semi-bold)',
-                      fontSize: 'var(--font-size-14)',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      fontSize: '12px',
+                      color: '#475569',
+                      lineHeight: '1.45',
                       cursor: 'pointer',
                     }}
                   >
-                    Save PIN & Complete
+                    <input
+                      type="checkbox"
+                      checked={privacyAccepted}
+                      onChange={(e) => {
+                        setPrivacyAccepted(e.target.checked);
+                        if (errors.privacy) {
+                          setErrors((prev) => ({ ...prev, privacy: '' }));
+                        }
+                      }}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        marginTop: '2px',
+                        accentColor: '#0052FF',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>
+                      I accept that Spotter stores my check-in history and email
+                      privately for 24 months, accessible only to my member account.
+                    </span>
+                  </label>
+                  {errors.privacy && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '6px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.privacy}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 7. Submit Button */}
+                <button
+                  type="submit"
+                  style={{
+                    width: '100%',
+                    height: '46px',
+                    backgroundColor: '#0052FF',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginTop: '8px',
+                    boxShadow: '0 1px 2px rgba(0, 82, 255, 0.2)',
+                    transition: 'background-color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#0045D8';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#0052FF';
+                  }}
+                >
+                  Create Account
+                </button>
+
+                {/* Toggle to Sign In */}
+                <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '13px', color: '#64748B' }}>
+                    Already have an account?{' '}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signin');
+                      setErrors({});
+                      setSubmitted(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#0052FF',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Sign in
                   </button>
-                )}
+                </div>
               </div>
-            )}
+            </form>
+          </div>
+        ) : (
+          /* ==============================================================
+             SIGN IN FORM
+             ============================================================== */
+          <div>
+            {/* Header Badge */}
+            <div style={{ marginBottom: '16px' }}>
+              <span
+                style={{
+                  backgroundColor: '#0052FF',
+                  color: '#FFFFFF',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '1.2px',
+                  padding: '5px 10px',
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  textTransform: 'uppercase',
+                  lineHeight: '1',
+                }}
+              >
+                SPOTTER
+              </span>
+            </div>
+
+            {/* Main Title & Subtitle */}
+            <h1
+              style={{
+                fontSize: '24px',
+                fontWeight: 800,
+                color: '#0F172A',
+                margin: '0 0 6px 0',
+                letterSpacing: '-0.3px',
+                lineHeight: '1.2',
+              }}
+            >
+              Sign In
+            </h1>
+            <p
+              style={{
+                fontSize: '13px',
+                color: '#64748B',
+                margin: '0 0 20px 0',
+                lineHeight: '1.45',
+              }}
+            >
+              Enter your mobile number and password to access your portal.
+            </p>
+
+            {/* Form Fields */}
+            <form onSubmit={handleSignInSubmit} noValidate>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '18px',
+                  borderTop: '1px solid #F1F5F9',
+                  paddingTop: '20px',
+                }}
+              >
+                {/* 1. Mobile Phone Number */}
+                <div>
+                  <label
+                    htmlFor="signin-mobile"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Mobile Number
+                  </label>
+                  <input
+                    id="signin-mobile"
+                    type="tel"
+                    value={signInPhone}
+                    onChange={(e) => {
+                      setSignInPhone(e.target.value);
+                      if (errors.signInPhone) {
+                        setErrors((prev) => ({ ...prev, signInPhone: '' }));
+                      }
+                    }}
+                    placeholder="0801 234 5678"
+                    autoComplete="tel"
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      height: '44px',
+                      backgroundColor: '#F1F5F9',
+                      border: `1px solid ${
+                        errors.signInPhone ? '#DC2626' : '#E2E8F0'
+                      }`,
+                      borderRadius: '6px',
+                      padding: '0 14px',
+                      fontSize: '14px',
+                      color: '#0F172A',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  {errors.signInPhone ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.signInPhone}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748B',
+                        marginTop: '4px',
+                      }}
+                    >
+                      Enter your 11-digit registered mobile number.
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Password with Show/Hide button */}
+                <div>
+                  <label
+                    htmlFor="signin-password"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0F172A',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Password
+                  </label>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      width: '100%',
+                    }}
+                  >
+                    <input
+                      id="signin-password"
+                      type={showSignInPassword ? 'text' : 'password'}
+                      value={signInPassword}
+                      onChange={(e) => {
+                        setSignInPassword(e.target.value);
+                        if (errors.signInPassword) {
+                          setErrors((prev) => ({ ...prev, signInPassword: '' }));
+                        }
+                      }}
+                      placeholder=""
+                      style={{
+                        flex: 1,
+                        height: '44px',
+                        backgroundColor: '#F1F5F9',
+                        border: `1px solid ${
+                          errors.signInPassword ? '#DC2626' : '#E2E8F0'
+                        }`,
+                        borderRight: 'none',
+                        borderRadius: '6px 0 0 6px',
+                        padding: '0 14px',
+                        fontSize: '14px',
+                        color: '#0F172A',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSignInPassword(!showSignInPassword)}
+                      style={{
+                        backgroundColor: '#E2E8F0',
+                        border: `1px solid ${
+                          errors.signInPassword ? '#DC2626' : '#E2E8F0'
+                        }`,
+                        borderRadius: '0 6px 6px 0',
+                        padding: '0 16px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {showSignInPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {errors.signInPassword && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: '#DC2626',
+                        fontSize: '12px',
+                        marginTop: '5px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <WarningIcon />
+                      <span>{errors.signInPassword}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  style={{
+                    width: '100%',
+                    height: '46px',
+                    backgroundColor: '#0052FF',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginTop: '8px',
+                    boxShadow: '0 1px 2px rgba(0, 82, 255, 0.2)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#0045D8';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#0052FF';
+                  }}
+                >
+                  Sign In
+                </button>
+
+                {/* Toggle to Sign Up */}
+                <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '13px', color: '#64748B' }}>
+                    Don&apos;t have an account?{' '}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setErrors({});
+                      setSubmitted(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#0052FF',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Create Account
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         )}
       </div>
