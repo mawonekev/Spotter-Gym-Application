@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionMember } from '@/server/auth/session';
 import { checkNeverAnswerRules } from '@/server/router/rules';
 import { COPY } from '@/lib/constants';
+import { askQuestionSchema, formatZodErrors } from '@/lib/validators';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rate-limit';
 
 /**
  * Route handler for member questions (F-1 and F-2)
@@ -12,17 +14,32 @@ import { COPY } from '@/lib/constants';
  */
 export async function POST(req: NextRequest) {
   try {
+    // IP-based rate limiting
+    const rateLimitResult = checkRateLimit(req, 'ask');
+    if (!rateLimitResult.success) {
+      return createRateLimitResponse(rateLimitResult);
+    }
+
     const session = await getSessionMember(req.headers.get('cookie'));
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
-    const questionText = body.question?.trim();
 
-    if (!questionText || questionText.length > 400) {
-      return NextResponse.json({ error: 'Invalid question' }, { status: 400 });
+    // Server-side Zod validation for member question
+    const parsed = askQuestionSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid question',
+          validationErrors: formatZodErrors(parsed.error),
+        },
+        { status: 400 }
+      );
     }
+
+    const { question: questionText } = parsed.data;
 
     // 1. Deterministic rules layer (< 50ms)
     const ruleResult = checkNeverAnswerRules(questionText);

@@ -2,17 +2,24 @@
 
 import React, { useState } from 'react';
 import { FormField } from '../FormField';
-import { validateRequired } from '@/lib/validators';
+import { normalizeEmail, validateRequired, validatePassword } from '@/lib/validators';
 
 export interface SignInFormProps {
   onSuccess?: (phone: string) => void;
+  onVerificationRequired?: (email: string) => void;
   onSwitchView: (view: 'signin' | 'signup' | 'forgot-password') => void;
 }
 
-export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
+export function SignInForm({
+  onSuccess,
+  onVerificationRequired,
+  onSwitchView,
+}: SignInFormProps) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -21,9 +28,13 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
+  const normalizeIdentifier = (value: string) =>
+    value.includes('@') ? normalizeEmail(value) : value.trim();
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setPhone(val);
+    if (serverError) setServerError(null);
     if (touched.phone) {
       setErrors((prev) => ({ ...prev, phone: validateRequired(val) }));
     }
@@ -31,12 +42,17 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
 
   const handlePhoneBlur = () => {
     markTouched('phone');
-    setErrors((prev) => ({ ...prev, phone: validateRequired(phone) }));
+    const normalized = normalizeIdentifier(phone);
+    if (normalized !== phone) {
+      setPhone(normalized);
+    }
+    setErrors((prev) => ({ ...prev, phone: validateRequired(normalized) }));
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setPassword(val);
+    if (serverError) setServerError(null);
     if (touched.password) {
       setErrors((prev) => ({ ...prev, password: validateRequired(val) }));
     }
@@ -44,10 +60,14 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
 
   const handlePasswordBlur = () => {
     markTouched('password');
-    setErrors((prev) => ({ ...prev, password: validateRequired(password) }));
+    const trimmed = password.trim();
+    if (trimmed !== password) {
+      setPassword(trimmed);
+    }
+    setErrors((prev) => ({ ...prev, password: validatePassword(trimmed) }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     setTouched({
@@ -55,16 +75,60 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
       password: true,
     });
 
-    const phoneErr = validateRequired(phone);
-    const passwordErr = validateRequired(password);
+    const trimmedPhone = normalizeIdentifier(phone);
+    const trimmedPassword = password.trim();
+    if (trimmedPhone !== phone) {
+      setPhone(trimmedPhone);
+    }
+    if (trimmedPassword !== password) {
+      setPassword(trimmedPassword);
+    }
+
+    const phoneErr = validateRequired(trimmedPhone);
+    const passwordErr = validatePassword(trimmedPassword);
 
     setErrors({
       phone: phoneErr,
       password: passwordErr,
     });
 
-    if (!phoneErr && !passwordErr) {
+    if (phoneErr || passwordErr) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setServerError(null);
+
+    try {
+      const res = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: trimmedPhone, password: trimmedPassword }),
+      });
+
+      const data = await res.json();
+
+      if (data.requiresEmailVerification && data.email) {
+        if (onVerificationRequired) {
+          onVerificationRequired(data.email);
+        } else {
+          setServerError(
+            data.error || 'Please verify your email address before signing in.'
+          );
+        }
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        setServerError(data.error || 'Failed to sign in. Please verify your details.');
+        return;
+      }
+
       onSuccess?.(phone);
+    } catch {
+      setServerError('Unable to reach server. Please check your network connection.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -79,19 +143,37 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
           paddingTop: '20px',
         }}
       >
-        {/* Mobile Number Field */}
+        {serverError && (
+          <div
+            role="alert"
+            style={{
+              padding: '12px 14px',
+              borderRadius: '6px',
+              backgroundColor: 'var(--color-error-container, #FEF2F2)',
+              border: '1px solid var(--color-error, #DC2626)',
+              color: 'var(--color-error, #DC2626)',
+              fontSize: '13px',
+              lineHeight: '1.4',
+            }}
+          >
+            {serverError}
+          </div>
+        )}
+
+        {/* Mobile Number or Email Field */}
         <FormField
           id="signin-phone"
-          label="Mobile Number"
-          type="tel"
+          label="Mobile Number or Email"
+          type="text"
           value={phone}
           onChange={handlePhoneChange}
           onBlur={handlePhoneBlur}
           error={errors.phone}
-          placeholder="0801 234 5678"
-          autoComplete="tel"
+          placeholder="0801 234 5678 or you@example.com"
+          autoComplete="username"
+          autoCapitalize="none"
           autoFocus
-          helperText="Enter your 11-digit registered mobile number."
+          helperText="Emails are matched case-insensitively."
         />
 
         {/* Password Field */}
@@ -156,28 +238,29 @@ export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
         {/* Submit Button */}
         <button
           type="submit"
+          disabled={isSubmitting}
           style={{
             width: '100%',
             height: '46px',
-            backgroundColor: 'var(--color-primary, #0052FF)',
+            backgroundColor: isSubmitting ? '#60A5FA' : 'var(--color-primary, #0052FF)',
             color: 'var(--color-on-primary, #FFFFFF)',
             border: 'none',
             borderRadius: '6px',
             fontSize: '14px',
             fontWeight: 600,
-            cursor: 'pointer',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
             marginTop: '8px',
             boxShadow: '0 1px 2px rgba(0, 82, 255, 0.2)',
             transition: 'background-color 0.15s ease',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#0045D8';
+            if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0045D8';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--color-primary, #0052FF)';
+            if (!isSubmitting) e.currentTarget.style.backgroundColor = 'var(--color-primary, #0052FF)';
           }}
         >
-          Sign In
+          {isSubmitting ? 'Signing In...' : 'Sign In'}
         </button>
 
         {/* Toggle to Sign Up (Available at the bottom for new users) */}

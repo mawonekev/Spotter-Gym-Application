@@ -7,8 +7,8 @@
  * - Private models must NEVER be imported or referenced here (enforced by CI).
  */
 
-import { Tier } from '@/lib/types';
-import { SIMILARITY_THRESHOLD } from '@/lib/constants';
+import type { Tier } from '../../lib/types/index.ts';
+import { SIMILARITY_THRESHOLD } from '../../lib/constants/index.ts';
 
 export interface RetrievedChunk {
   chunkId: string;

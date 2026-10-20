@@ -6,8 +6,16 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { SignUpForm } from './SignUpForm';
 import { SignInForm } from './SignInForm';
 import { ForgotPasswordForm } from './ForgotPasswordForm';
+import { ResetPasswordForm } from './ResetPasswordForm';
+import { VerifyEmailForm } from './VerifyEmailForm';
 
-export type AuthView = 'signin' | 'signup' | 'forgot-password';
+export type AuthView = 'signin' | 'signup' | 'forgot-password' | 'reset-password';
+type PageView = AuthView | 'verify';
+
+interface SuccessNotice {
+  title: string;
+  detail: string;
+}
 
 export function AuthPage() {
   const searchParams = useSearchParams();
@@ -15,55 +23,101 @@ export function AuthPage() {
 
   // Read initial view from query param (?view=signup), defaulting to 'signin'
   const paramView = searchParams.get('view');
-  const initialView: AuthView =
-    paramView === 'signup' || paramView === 'forgot-password' || paramView === 'signin'
-      ? paramView
-      : 'signin';
+  const isAuthView = (value: string | null): value is AuthView =>
+    value === 'signup' ||
+    value === 'forgot-password' ||
+    value === 'reset-password' ||
+    value === 'signin';
 
-  const [currentView, setCurrentView] = useState<AuthView>(initialView);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const initialView: AuthView = isAuthView(paramView) ? paramView : 'signin';
+
+  const [currentView, setCurrentView] = useState<PageView>(initialView);
+  const [successNotice, setSuccessNotice] = useState<SuccessNotice | null>(null);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [resetIdentifier, setResetIdentifier] = useState('');
 
   // Sync if query param changes externally
   useEffect(() => {
-    if (paramView === 'signup' || paramView === 'forgot-password' || paramView === 'signin') {
+    if (isAuthView(paramView)) {
       setCurrentView(paramView);
     }
   }, [paramView]);
 
   // Handle switching view without full route change
-  const handleSwitchView = (nextView: AuthView) => {
+  const handleSwitchView = (nextView: PageView) => {
     setCurrentView(nextView);
     // Optional: update URL query string without page reload
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && nextView !== 'verify') {
       const url = new URL(window.location.href);
       url.searchParams.set('view', nextView);
       window.history.replaceState({}, '', url.toString());
     }
   };
 
-  const handleAuthSuccess = (name?: string) => {
-    setSuccessNotice(
-      currentView === 'signup'
-        ? `Welcome to Spotter, ${name?.split(' ')[0] || 'Member'}!`
-        : 'Signed in successfully.'
-    );
-    setTimeout(() => {
-      router.push('/');
-    }, 2000);
+  const handleSignUpSuccess = (name?: string, email?: string) => {
+    if (typeof window !== 'undefined') {
+      if (email) localStorage.setItem('spotter_user_email', email);
+      if (name) localStorage.setItem('spotter_user_name', name);
+    }
+
+    // Require the new member to verify her email before signing in.
+    setVerificationEmail(email || '');
+    setSuccessNotice(null);
+    setCurrentView('verify');
   };
 
-  const titles: Record<AuthView, { title: string; subtitle: string }> = {
+  const handleVerificationRequired = (email: string) => {
+    setVerificationEmail(email);
+    setSuccessNotice(null);
+    setCurrentView('verify');
+  };
+
+  const handleVerified = () => {
+    setSuccessNotice({
+      title: 'Email verified successfully.',
+      detail: 'Please sign in to continue to your gym portal.',
+    });
+    setTimeout(() => {
+      setSuccessNotice(null);
+      handleSwitchView('signin');
+    }, 1800);
+  };
+
+  const handleSignInSuccess = () => {
+    // Existing user sign in: ensure onboarding pending flag is cleared and go straight to dashboard
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('spotter_onboarding_pending');
+      localStorage.removeItem('spotter_onboarding_pending');
+    }
+    setSuccessNotice({
+      title: 'Signed in successfully.',
+      detail: 'Redirecting to your gym portal...',
+    });
+    setTimeout(() => {
+      router.push('/');
+    }, 1000);
+  };
+
+  const titles: Record<PageView, { title: string; subtitle: string }> = {
     signin: {
       title: 'Sign In',
       subtitle: 'Enter your mobile number and password to access your personal Spotter portal.',
     },
     signup: {
       title: 'Create Account',
-      subtitle: 'Link your gym card to activate your personal Spotter portal.',
+      subtitle: 'Create your account. A member number will be assigned automatically.',
     },
     'forgot-password': {
       title: 'Reset Password',
       subtitle: 'Enter your registered details to recover access to your Spotter portal.',
+    },
+    'reset-password': {
+      title: 'Choose a New Password',
+      subtitle: 'Enter the reset code from your email and choose a new password.',
+    },
+    verify: {
+      title: 'Verify Your Email',
+      subtitle: 'Enter the 6-digit code we sent to your email to activate your account.',
     },
   };
 
@@ -173,7 +227,7 @@ export function AuthPage() {
                 margin: 0,
               }}
             >
-              {successNotice}
+              {successNotice.title}
             </h2>
             <p
               style={{
@@ -182,7 +236,7 @@ export function AuthPage() {
                 margin: 0,
               }}
             >
-              Redirecting to your gym portal...
+              {successNotice.detail}
             </p>
           </div>
         ) : (
@@ -234,23 +288,74 @@ export function AuthPage() {
             {/* Conditional Rendering of the Active View */}
             {currentView === 'signup' && (
               <SignUpForm
-                onSuccess={(name, phone) => handleAuthSuccess(name)}
+                onSuccess={(name, phone, email) => handleSignUpSuccess(name, email)}
                 onSwitchView={handleSwitchView}
               />
             )}
 
             {currentView === 'signin' && (
               <SignInForm
-                onSuccess={(phone) => handleAuthSuccess()}
+                onSuccess={() => handleSignInSuccess()}
+                onVerificationRequired={handleVerificationRequired}
                 onSwitchView={handleSwitchView}
               />
             )}
 
             {currentView === 'forgot-password' && (
               <ForgotPasswordForm
-                onSuccess={() => {}}
+                onSuccess={(identifier) => setResetIdentifier(identifier)}
                 onSwitchView={handleSwitchView}
               />
+            )}
+
+            {currentView === 'reset-password' && (
+              <ResetPasswordForm
+                initialIdentifier={resetIdentifier}
+                onSuccess={() => {
+                  setSuccessNotice({
+                    title: 'Password reset successfully.',
+                    detail: 'Please sign in with your new password.',
+                  });
+                  setTimeout(() => {
+                    setSuccessNotice(null);
+                    handleSwitchView('signin');
+                  }, 1800);
+                }}
+                onSwitchView={handleSwitchView}
+              />
+            )}
+
+            {currentView === 'verify' && (
+              verificationEmail ? (
+                <VerifyEmailForm
+                  email={verificationEmail}
+                  onVerified={handleVerified}
+                  onSwitchView={handleSwitchView}
+                />
+              ) : (
+                <div style={{ paddingTop: '20px', borderTop: '1px solid var(--border-color-subtle, #F1F5F9)' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--color-on-surface-variant, #475569)', lineHeight: '1.5', margin: '0 0 12px 0' }}>
+                    We could not find the email address for this verification attempt.
+                    Please sign in again to receive a new code.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchView('signin')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--color-primary, #0052FF)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              )
             )}
           </div>
         )}

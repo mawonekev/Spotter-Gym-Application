@@ -5,7 +5,7 @@
  * A pattern hit refuses immediately, returns REFUSED_POLICY, and makes no model call.
  */
 
-import { RefusalReason } from '@/lib/types';
+import type { RefusalReason } from '../../lib/types/index.ts';
 
 export interface RuleCheckResult {
   isRefused: boolean;

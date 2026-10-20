@@ -7,24 +7,25 @@ import {
   validateFullName,
   validateEmail,
   validatePassword,
+  validatePasswordNotPwned,
   validateSignUp,
   isSignUpFormValid,
+  normalizeEmail,
   type SignUpValues,
 } from '@/lib/validators';
 
 export interface SignUpFormProps {
   initialValues?: Partial<SignUpValues>;
-  onSuccess?: (memberName: string, phone: string) => void | Promise<void>;
+  onSuccess?: (memberName: string, phone: string, email?: string) => void | Promise<void>;
   onSwitchView: (view: 'signin' | 'signup' | 'forgot-password') => void;
 }
 
 export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFormProps) {
   // Form Values (optionally prefilled from initialValues)
   const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
-  const [email, setEmail] = useState(initialValues?.email ?? '');
+  const [email, setEmail] = useState(normalizeEmail(initialValues?.email));
   const [phone, setPhone] = useState(initialValues?.phone ?? '');
-  const [memberNumber, setMemberNumber] = useState(initialValues?.memberNumber ?? '');
-  const [password, setPassword] = useState(initialValues?.password ?? '');
+  const [password, setPassword] = useState((initialValues?.password ?? '').trim());
   const [showPassword, setShowPassword] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(initialValues?.privacyAccepted ?? false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,8 +35,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
     fullName,
     email,
     phone,
-    memberNumber,
-    password,
+    password: password.trim(),
     privacyAccepted,
   });
   const isFormValid = Object.keys(formValidationErrors).length === 0;
@@ -47,6 +47,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
   // Error state
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [privacyError, setPrivacyError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const markTouched = (field: string) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -68,7 +69,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
 
   // Email Change (Real-time validation on every keystroke) & Blur
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+    const val = normalizeEmail(e.target.value);
     setEmail(val);
     // Real-time email validation: validates on every keystroke once typing begins
     if (val.length > 0) {
@@ -83,10 +84,14 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
 
   const handleEmailBlur = () => {
     markTouched('email');
-    if (!email.trim()) {
-      setErrors((prev) => ({ ...prev, email: validateRequired(email) }));
+    const normalized = normalizeEmail(email.trim());
+    if (normalized !== email) {
+      setEmail(normalized);
+    }
+    if (!normalized) {
+      setErrors((prev) => ({ ...prev, email: validateRequired(normalized) }));
     } else {
-      setErrors((prev) => ({ ...prev, email: validateEmail(email, false) }));
+      setErrors((prev) => ({ ...prev, email: validateEmail(normalized, false) }));
     }
   };
 
@@ -104,20 +109,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
     setErrors((prev) => ({ ...prev, phone: validateRequired(phone) }));
   };
 
-  // Member Number Change & Blur
-  const handleMemberNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setMemberNumber(val);
-    if (touched.memberNumber) {
-      setErrors((prev) => ({ ...prev, memberNumber: validateRequired(val) }));
-    }
-  };
-
-  const handleMemberNumberBlur = () => {
-    markTouched('memberNumber');
-    setErrors((prev) => ({ ...prev, memberNumber: validateRequired(memberNumber) }));
-  };
-
   // Password Change & Blur
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -127,9 +118,23 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
     }
   };
 
-  const handlePasswordBlur = () => {
+  const handlePasswordBlur = async () => {
     markTouched('password');
-    setErrors((prev) => ({ ...prev, password: validatePassword(password) }));
+    const trimmed = password.trim();
+    if (trimmed !== password) {
+      setPassword(trimmed);
+    }
+    const basicError = validatePassword(trimmed);
+    if (basicError) {
+      setErrors((prev) => ({ ...prev, password: basicError }));
+      return;
+    }
+    setErrors((prev) => ({ ...prev, password: null }));
+
+    const pwnedError = await validatePasswordNotPwned(trimmed);
+    if (pwnedError) {
+      setErrors((prev) => ({ ...prev, password: pwnedError }));
+    }
   };
 
   // Form Submit: Guards handler by re-running validateSignUp
@@ -138,13 +143,17 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
 
     if (isSubmitting) return;
 
+    const trimmedPassword = password.trim();
+    if (trimmedPassword !== password) {
+      setPassword(trimmedPassword);
+    }
+
     // Re-run validateSignUp to guard submit handler (e.g. Enter pressed)
     const validationErrors = validateSignUp({
       fullName,
       email,
       phone,
-      memberNumber,
-      password,
+      password: trimmedPassword,
       privacyAccepted,
     });
 
@@ -156,7 +165,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
         fullName: true,
         email: true,
         phone: true,
-        memberNumber: true,
         password: true,
       });
 
@@ -164,7 +172,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
         fullName: validationErrors.fullName || null,
         email: validationErrors.email || null,
         phone: validationErrors.phone || null,
-        memberNumber: validationErrors.memberNumber || null,
         password: validationErrors.password || null,
       });
       setPrivacyError(validationErrors.privacyAccepted || null);
@@ -175,7 +182,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           'fullName',
           'email',
           'phone',
-          'memberNumber',
           'password',
           'privacyAccepted',
         ];
@@ -183,7 +189,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           fullName: 'signup-fullname',
           email: 'signup-email',
           phone: 'signup-phone',
-          memberNumber: 'signup-membernumber',
           password: 'signup-password',
           privacyAccepted: 'signup-privacy',
         };
@@ -202,7 +207,44 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
 
     try {
       setIsSubmitting(true);
-      await onSuccess?.(fullName, phone);
+      setServerError(null);
+
+      const pwnedError = await validatePasswordNotPwned(trimmedPassword);
+      if (pwnedError) {
+        setErrors((prev) => ({ ...prev, password: pwnedError }));
+        setTouched((prev) => ({ ...prev, password: true }));
+        return;
+      }
+
+      let data: { success?: boolean; error?: string } | null = null;
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName,
+            email: normalizeEmail(email),
+            phone: phone.trim(),
+            password: trimmedPassword,
+            privacyAccepted,
+          }),
+        });
+        data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.success) {
+          setServerError(
+            data?.error || 'We could not create your account. Please try again.'
+          );
+          return;
+        }
+      } catch {
+        setServerError(
+          'Unable to reach the server. Please check your connection and try again.'
+        );
+        return;
+      }
+
+      await onSuccess?.(fullName, phone, email);
     } finally {
       setIsSubmitting(false);
     }
@@ -216,9 +258,26 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           flexDirection: 'column',
           gap: '18px',
           borderTop: '1px solid var(--border-color-subtle, #F1F5F9)',
-          paddingTop: '20px',
-        }}
-      >
+        paddingTop: '20px',
+      }}
+    >
+        {serverError && (
+          <div
+            role="alert"
+            style={{
+              padding: '12px 14px',
+              borderRadius: '6px',
+              backgroundColor: 'var(--color-error-container, #FEF2F2)',
+              border: '1px solid var(--color-error, #DC2626)',
+              color: 'var(--color-error, #DC2626)',
+              fontSize: '13px',
+              lineHeight: '1.4',
+            }}
+          >
+            {serverError}
+          </div>
+        )}
+
         {/* Full Name Field */}
         <FormField
           id="signup-fullname"
@@ -245,6 +304,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           error={errors.email}
           placeholder="chioma@example.com"
           autoComplete="email"
+          autoCapitalize="none"
         />
 
         {/* Mobile Number Field */}
@@ -262,20 +322,6 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           helperText="Used for mobile sign-in authentication."
         />
 
-        {/* Member Number Field */}
-        <FormField
-          id="signup-membernumber"
-          label="Member Number"
-          type="text"
-          required
-          value={memberNumber}
-          onChange={handleMemberNumberChange}
-          onBlur={handleMemberNumberBlur}
-          error={errors.memberNumber}
-          placeholder="e.g. 1042"
-          helperText="Enter the member number on your gym card."
-        />
-
         {/* Password Field with Show/Hide toggle */}
         <FormField
           id="signup-password"
@@ -289,7 +335,7 @@ export function SignUpForm({ initialValues, onSuccess, onSwitchView }: SignUpFor
           error={errors.password}
           helperText={
             password.length > 0 && !errors.password
-              ? 'Use at least eight characters.'
+              ? 'Use at least eight characters, including a letter and a number.'
               : undefined
           }
           rightElement={

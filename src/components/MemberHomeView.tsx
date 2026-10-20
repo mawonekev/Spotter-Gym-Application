@@ -9,6 +9,7 @@ import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { AskInput } from '@/components/AskInput';
 import { CheckInModal } from '@/components/CheckInModal';
 import { DeskHandoff } from '@/components/DeskHandoff';
+import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
 
 /**
  * Initial offline-cached status for Chioma Adeyemi per PRD persona & FR-8.
@@ -34,6 +35,41 @@ export function MemberHomeView() {
   const [activeAnswer, setActiveAnswer] = useState<AskQuestionResponse | null>(null);
   const [isAsking, setIsAsking] = useState(false);
   const [officerOnDuty] = useState('Ngozi');
+  const [userEmail, setUserEmail] = useState('chioma@example.com');
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+
+  // Sync active user identity and email verification status from client session / API
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedEmail = localStorage.getItem('spotter_user_email');
+      const emailToUse = storedEmail || 'chioma@example.com';
+      setUserEmail(emailToUse);
+
+      const storedName = localStorage.getItem('spotter_user_name');
+      if (storedName) {
+        setStatus((prev) => ({
+          ...prev,
+          firstName: storedName.split(' ')[0] || prev.firstName,
+          lastName: storedName.split(' ').slice(1).join(' ') || prev.lastName,
+        }));
+      }
+
+      const locallyVerified =
+        localStorage.getItem(`spotter_verified_${emailToUse}`) === 'true';
+      setIsEmailVerified(locallyVerified);
+
+      // Query server for verified status
+      fetch(`/api/auth/verification-status?email=${encodeURIComponent(emailToUse)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.emailVerified) {
+            setIsEmailVerified(true);
+            localStorage.setItem(`spotter_verified_${emailToUse}`, 'true');
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   // Dynamically update document title based on the active view
   useEffect(() => {
@@ -257,6 +293,15 @@ export function MemberHomeView() {
           boxSizing: 'border-box',
         }}
       >
+        {/* Email Verification Banner */}
+        {!isEmailVerified && (
+          <EmailVerificationBanner
+            email={userEmail}
+            isVerified={isEmailVerified}
+            onVerified={() => setIsEmailVerified(true)}
+          />
+        )}
+
         {/* Member Status Card */}
         <MemberStatusCard
           status={status}

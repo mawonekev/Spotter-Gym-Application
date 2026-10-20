@@ -114,3 +114,54 @@ test('SignUpForm component - returns to disabled when a field is broken', () => 
   assert.equal(isButtonDisabled(uncheckedPrivacyHtml), true);
   assert.match(uncheckedPrivacyHtml, /aria-disabled="true"/);
 });
+
+test('SignUpForm component - normalizes email input to lowercase and disables autocapitalize', () => {
+  const html = renderToString(React.createElement(SignUpForm, {
+    initialValues: {
+      fullName: 'Chioma Adeyemi',
+      email: 'Chioma.Adeyemi@EXAMPLE.COM',
+      phone: '08012345678',
+      memberNumber: '1042',
+      password: 'password123',
+      privacyAccepted: true,
+    },
+    onSwitchView: () => {},
+  }));
+
+  // Email value rendered in input is normalized to lowercase
+  assert.match(html, /value="chioma\.adeyemi@example\.com"/);
+
+  // Email field has autocapitalize="none" attribute to prevent mobile capitalization
+  assert.match(html, /id="signup-email"[^>]*autocapitalize="none"/i);
+});
+
+test('SignUpForm component - trims password and rejects whitespace-only password', () => {
+  const baseValid = {
+    fullName: 'Chioma Adeyemi',
+    email: 'chioma@example.com',
+    phone: '08012345678',
+    memberNumber: '1042',
+    privacyAccepted: true,
+  };
+
+  // Whitespace-only password keeps submit disabled
+  const whitespacePasswordHtml = renderToString(React.createElement(SignUpForm, {
+    initialValues: {
+      ...baseValid,
+      password: '        ', // 8 spaces
+    },
+    onSwitchView: () => {},
+  }));
+  assert.equal(isButtonDisabled(whitespacePasswordHtml), true);
+
+  // Password with surrounding whitespace is trimmed to valid length
+  const trimmedPasswordHtml = renderToString(React.createElement(SignUpForm, {
+    initialValues: {
+      ...baseValid,
+      password: '  password123  ',
+    },
+    onSwitchView: () => {},
+  }));
+  assert.equal(isButtonDisabled(trimmedPasswordHtml), false);
+  assert.match(trimmedPasswordHtml, /value="password123"/);
+});

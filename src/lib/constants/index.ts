@@ -3,7 +3,7 @@
  * Source of truth: PRD and .agent/rules/copy.md
  */
 
-import { SuggestedQuestion } from '../types';
+import type { SuggestedQuestion } from '../types/index.ts';
 
 export const APP_NAME = 'Spotter';
 

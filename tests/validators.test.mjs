@@ -4,6 +4,8 @@ import {
   validateRequired,
   validateFullName,
   validateEmail,
+  normalizeEmail,
+  normalizePhone,
   validatePhone,
   validatePassword,
   validateSignUp,
@@ -57,6 +59,23 @@ test('validateEmail', () => {
   assert.equal(validateEmail('valid@example.com', false), null);
 });
 
+test('normalizeEmail', () => {
+  assert.equal(normalizeEmail(''), '');
+  assert.equal(normalizeEmail(null), '');
+  assert.equal(normalizeEmail(undefined), '');
+  assert.equal(normalizeEmail('Chioma@Example.com'), 'chioma@example.com');
+  assert.equal(normalizeEmail('USER@GYM.NG'), 'user@gym.ng');
+  assert.equal(normalizeEmail('Jane.Doe+Tag@EXAMPLE.COM'), 'jane.doe+tag@example.com');
+});
+
+test('normalizePhone', () => {
+  assert.equal(normalizePhone(''), '');
+  assert.equal(normalizePhone(null), '');
+  assert.equal(normalizePhone(undefined), '');
+  assert.equal(normalizePhone('0801 234 5678'), '08012345678');
+  assert.equal(normalizePhone('+234 (801) 234-5678'), '2348012345678');
+});
+
 test('validatePhone', () => {
   assert.equal(validatePhone(''), ERROR_MESSAGES.REQUIRED);
   assert.equal(validatePhone('123'), ERROR_MESSAGES.PHONE_INVALID);
@@ -66,9 +85,15 @@ test('validatePhone', () => {
 
 test('validatePassword', () => {
   assert.equal(validatePassword(''), ERROR_MESSAGES.REQUIRED);
+  assert.equal(validatePassword('   '), ERROR_MESSAGES.REQUIRED);
   assert.equal(validatePassword('1234567'), ERROR_MESSAGES.PASSWORD_LENGTH);
-  assert.equal(validatePassword('12345678'), null);
-  assert.equal(validatePassword('verySecretPassword!'), null);
+  assert.equal(validatePassword('  12345  '), ERROR_MESSAGES.PASSWORD_LENGTH);
+  // Digits only fails the shared complexity policy (letter + number required).
+  assert.equal(validatePassword('12345678'), ERROR_MESSAGES.PASSWORD_COMPLEXITY);
+  assert.equal(validatePassword('weakpass'), ERROR_MESSAGES.PASSWORD_COMPLEXITY);
+  assert.equal(validatePassword('  12345678  '), ERROR_MESSAGES.PASSWORD_COMPLEXITY);
+  assert.equal(validatePassword('verySecretPassword1!'), null);
+  assert.equal(validatePassword('  12345678ab  '), null);
 });
 
 test('validateSignUp and isSignUpFormValid - empty form', () => {
@@ -85,7 +110,6 @@ test('validateSignUp and isSignUpFormValid - empty form', () => {
   assert.equal(errors.fullName, ERROR_MESSAGES.REQUIRED);
   assert.equal(errors.email, ERROR_MESSAGES.REQUIRED);
   assert.equal(errors.phone, ERROR_MESSAGES.REQUIRED);
-  assert.equal(errors.memberNumber, ERROR_MESSAGES.REQUIRED);
   assert.equal(errors.password, ERROR_MESSAGES.REQUIRED);
   assert.equal(errors.privacyAccepted, ERROR_MESSAGES.PRIVACY_REQUIRED);
 
@@ -193,5 +217,128 @@ test('validateSignUp and isSignUpFormValid - confirmPassword matching when provi
   const match = { ...base, confirmPassword: 'password123' };
   assert.deepEqual(validateSignUp(match), {});
   assert.equal(isSignUpFormValid(match), true);
+});
+
+test('validateSignIn schema validation', async () => {
+  const { validateSignIn } = await import('../src/lib/validators.ts');
+
+  // Invalid empty inputs
+  const emptyRes = validateSignIn({ phone: '', password: '' });
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.errors?.phone);
+  assert.ok(emptyRes.errors?.password);
+
+  // Invalid phone
+  const badPhoneRes = validateSignIn({ phone: '123', password: 'password123' });
+  assert.equal(badPhoneRes.success, false);
+  assert.ok(badPhoneRes.errors?.phone);
+
+  // Valid credentials
+  const validRes = validateSignIn({ phone: '08012345678', password: 'securePassword1' });
+  assert.equal(validRes.success, true);
+  assert.equal(validRes.data?.phone, '08012345678');
+});
+
+test('validateMemberRegistration schema validation', async () => {
+  const { validateMemberRegistration } = await import('../src/lib/validators.ts');
+
+  // Missing fields
+  const missingRes = validateMemberRegistration({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+  });
+  assert.equal(missingRes.success, false);
+  assert.ok(missingRes.errors?.firstName);
+  assert.ok(missingRes.errors?.lastName);
+  assert.ok(missingRes.errors?.email);
+  assert.ok(missingRes.errors?.phone);
+
+  // Invalid email and tier
+  const invalidFieldsRes = validateMemberRegistration({
+    firstName: 'Chioma',
+    lastName: 'Adeyemi',
+    email: 'not-an-email',
+    phone: '08012345678',
+    tier: 'INVALID_TIER',
+  });
+  assert.equal(invalidFieldsRes.success, false);
+  assert.ok(invalidFieldsRes.errors?.email);
+  assert.ok(invalidFieldsRes.errors?.tier);
+
+  // Valid member registration
+  const validRes = validateMemberRegistration({
+    firstName: 'Chioma',
+    lastName: 'Adeyemi',
+    email: 'chioma@example.com',
+    phone: '08012345678',
+    tier: 'PREMIUM',
+  });
+  assert.equal(validRes.success, true);
+  assert.equal(validRes.data?.firstName, 'Chioma');
+  assert.equal(validRes.data?.tier, 'PREMIUM');
+});
+
+test('validateCheckIn schema validation', async () => {
+  const { validateCheckIn, checkInSchema } = await import('../src/lib/validators.ts');
+
+  // Empty or wrong length
+  const emptyRes = validateCheckIn({ code: '' });
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.errors?.code);
+
+  const shortRes = validateCheckIn({ code: '123' });
+  assert.equal(shortRes.success, false);
+
+  const nonDigitRes = validateCheckIn({ code: 'abcd' });
+  assert.equal(nonDigitRes.success, false);
+
+  // Valid 4-digit code
+  const validRes = validateCheckIn({ code: '4821' });
+  assert.equal(validRes.success, true);
+  assert.equal(validRes.data?.code, '4821');
+
+  // Direct schema parse
+  assert.equal(checkInSchema.safeParse({ code: '4821' }).success, true);
+});
+
+test('validateAskQuestion schema validation', async () => {
+  const { validateAskQuestion, askQuestionSchema } = await import('../src/lib/validators.ts');
+
+  // Empty question
+  const emptyRes = validateAskQuestion({ question: '' });
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.errors?.question);
+
+  // Exceeds 400 characters
+  const tooLongRes = validateAskQuestion({ question: 'a'.repeat(401) });
+  assert.equal(tooLongRes.success, false);
+  assert.ok(tooLongRes.errors?.question);
+
+  // Valid question
+  const validRes = validateAskQuestion({ question: 'What time is the Saturday class?' });
+  assert.equal(validRes.success, true);
+  assert.equal(validRes.data?.question, 'What time is the Saturday class?');
+
+  // Direct schema parse
+  assert.equal(askQuestionSchema.safeParse({ question: 'Can I bring a guest?' }).success, true);
+});
+
+test('validateForgotPassword schema validation', async () => {
+  const { validateForgotPassword, forgotPasswordSchema } = await import('../src/lib/validators.ts');
+
+  // Empty identifier
+  const emptyRes = validateForgotPassword({ identifier: '' });
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.errors?.identifier);
+
+  // Valid identifier
+  const validRes = validateForgotPassword({ identifier: '08012345678' });
+  assert.equal(validRes.success, true);
+  assert.equal(validRes.data?.identifier, '08012345678');
+
+  // Direct schema parse
+  assert.equal(forgotPasswordSchema.safeParse({ identifier: 'user@example.com' }).success, true);
 });
 
