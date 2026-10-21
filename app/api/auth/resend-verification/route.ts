@@ -3,6 +3,7 @@ import { resendVerificationCodeAndPersist } from '@/server/auth/verification';
 import { resendVerificationSchema, formatZodErrors } from '@/lib/validators';
 import {
   checkRateLimit,
+  consumeRateLimit,
   recordFailedAuthAttempt,
   clearFailedAuthAttempts,
   createRateLimitResponse,
@@ -39,6 +40,18 @@ export async function POST(req: NextRequest) {
     );
     if (!rateLimitResult.success) {
       return createRateLimitResponse(rateLimitResult);
+    }
+
+    // Resends succeed even for unknown accounts, so throttle every issuance to
+    // prevent verification-email flooding.
+    const issueLimitResult = consumeRateLimit(
+      req,
+      'resend-verification-issue',
+      undefined,
+      identifiers
+    );
+    if (!issueLimitResult.success) {
+      return createRateLimitResponse(issueLimitResult);
     }
 
     const parsed = resendVerificationSchema.safeParse(body);

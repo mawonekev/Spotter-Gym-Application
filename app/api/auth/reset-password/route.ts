@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { completePasswordReset } from '@/server/auth/password-reset';
+import { logAuthEvent } from '@/server/auth/audit';
 import { resetPasswordSchema, formatZodErrors } from '@/lib/validators';
 import {
   checkRateLimit,
@@ -48,6 +49,12 @@ export async function POST(req: NextRequest) {
     const parsed = resetPasswordSchema.safeParse(body);
 
     if (!parsed.success) {
+      logAuthEvent(
+        'AUTH_PASSWORD_RESET_FAILURE',
+        getClientIp(req),
+        rawIdentifier || undefined,
+        { reason: 'Reset request failed schema validation' }
+      );
       const failure = recordFailedAuthAttempt(
         req,
         'reset-password',

@@ -4,6 +4,7 @@ import {
   getClientIp,
   checkRateLimitByKey,
   checkRateLimit,
+  consumeRateLimit,
   recordFailedAuthAttempt,
   clearFailedAuthAttempts,
   createRateLimitResponse,
@@ -149,6 +150,46 @@ test('checkRateLimit - isolates rate limits across distinct IPs and endpoints', 
   const resForgot = checkRateLimit(reqA, 'forgot-password');
   assert.equal(resForgot.success, true);
   assert.equal(resForgot.remaining, 5);
+});
+
+test('consumeRateLimit - throttles successful reset and verification issuance', () => {
+  resetRateLimits();
+  const req = {
+    headers: {
+      get: (name) => (name === 'x-real-ip' ? '10.0.2.50' : null),
+    },
+  };
+  const identifiers = { email: 'Issuance@Test.Example' };
+
+  for (let i = 1; i <= 5; i++) {
+    const res = consumeRateLimit(req, 'forgot-password-issue', undefined, identifiers);
+    assert.equal(res.success, true);
+    assert.equal(res.remaining, 5 - i);
+  }
+
+  const blocked = consumeRateLimit(req, 'forgot-password-issue', undefined, identifiers);
+  assert.equal(blocked.success, false);
+  assert.equal(blocked.isBlocked, true);
+  assert.ok(blocked.retryAfterSeconds > 3500);
+
+  // A different endpoint has an independent issuance bucket.
+  const other = consumeRateLimit(req, 'resend-verification-issue', undefined, identifiers);
+  assert.equal(other.success, true);
+
+  // The email bucket also blocks even if the IP changes.
+  const otherIp = {
+    headers: {
+      get: (name) => (name === 'x-real-ip' ? '10.0.2.51' : null),
+    },
+  };
+  const emailBlocked = consumeRateLimit(
+    otherIp,
+    'forgot-password-issue',
+    undefined,
+    identifiers
+  );
+  assert.equal(emailBlocked.success, false);
+  assert.equal(emailBlocked.isBlocked, true);
 });
 
 test('createRateLimitResponse - returns 429 and standard headers', () => {

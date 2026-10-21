@@ -17,6 +17,7 @@ tests/.build
 # Misc
 .DS_Store
 *.pem
+*.log
 
 # Local env files (per env.md)
 .env*.local

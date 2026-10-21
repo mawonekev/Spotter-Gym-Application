@@ -156,6 +156,9 @@ export async function completePasswordReset(
   }
 
   if (!record || record.used) {
+    logAuthEvent('AUTH_PASSWORD_RESET_FAILURE', clientIp, identifier, {
+      reason: 'Invalid or already used reset token',
+    });
     return {
       success: false,
       message: 'Invalid or expired password reset request. Please request a new link.',
@@ -164,6 +167,9 @@ export async function completePasswordReset(
   }
 
   if (Date.now() > record.expiresAt) {
+    logAuthEvent('AUTH_PASSWORD_RESET_FAILURE', clientIp, identifier, {
+      reason: 'Reset token expired',
+    });
     return {
       success: false,
       message: 'Password reset link has expired. Please request a new one.',
@@ -184,6 +190,9 @@ export async function completePasswordReset(
   }
 
   if (!isMatch) {
+    logAuthEvent('AUTH_PASSWORD_RESET_FAILURE', clientIp, identifier, {
+      reason: 'Reset token mismatch',
+    });
     return {
       success: false,
       message: 'Invalid reset token provided.',
@@ -196,6 +205,9 @@ export async function completePasswordReset(
   const trimmedPassword = newPassword.trim();
   const passwordError = validatePassword(trimmedPassword);
   if (passwordError) {
+    logAuthEvent('AUTH_PASSWORD_RESET_FAILURE', clientIp, identifier, {
+      reason: 'New password failed policy',
+    });
     return {
       success: false,
       message: passwordError,
@@ -206,6 +218,9 @@ export async function completePasswordReset(
   // Check breached password
   const pwnedError = await validatePasswordNotPwned(trimmedPassword);
   if (pwnedError) {
+    logAuthEvent('AUTH_PASSWORD_RESET_FAILURE', clientIp, identifier, {
+      reason: 'New password found in breach corpus',
+    });
     return {
       success: false,
       message: pwnedError,

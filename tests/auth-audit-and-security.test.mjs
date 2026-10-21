@@ -404,6 +404,48 @@ test('Lifecycle 13: Password-reset - generates token, enforces 15-min expiry, an
 });
 
 // -------------------------------------------------------------
+// 13b. Password-reset failure audit trail
+// -------------------------------------------------------------
+test('Lifecycle 13b: Password-reset failures are written to the auth audit log', async () => {
+  clearAuthAuditLogs();
+  resetPasswordResetStore();
+
+  const email = 'audit.reset@spotter.gym';
+  const requestRes = await requestPasswordReset(email);
+  assert.equal(requestRes.success, true);
+  const token = requestRes.resetToken;
+  assert.ok(token);
+
+  // Wrong token
+  const wrongToken = await completePasswordReset(email, 'not-the-token', 'ValidPassword123!');
+  assert.equal(wrongToken.success, false);
+
+  // Weak new password
+  const weakPassword = await completePasswordReset(email, token, 'short');
+  assert.equal(weakPassword.success, false);
+
+  const logs = getRecentAuthAuditLogs(10);
+  const failureLogs = logs.filter(
+    (entry) => entry.eventType === 'AUTH_PASSWORD_RESET_FAILURE'
+  );
+  assert.equal(failureLogs.length, 2);
+  assert.ok(
+    failureLogs.some((entry) => entry.details?.reason === 'Reset token mismatch')
+  );
+  assert.ok(
+    failureLogs.some((entry) => entry.details?.reason === 'New password failed policy')
+  );
+
+  // Failure entries must never include the raw token or new password.
+  for (const entry of failureLogs) {
+    const serialized = JSON.stringify(entry.details ?? {});
+    assert.ok(!serialized.includes('not-the-token'));
+    assert.ok(!serialized.includes('ValidPassword123!'));
+    assert.ok(!serialized.includes('short'));
+  }
+});
+
+// -------------------------------------------------------------
 // 14. Email Normalization and Password Handling During Password Reset
 // -------------------------------------------------------------
 test('Lifecycle 14: Password reset normalization - normalizes mixed-case email; validates new password', async () => {

@@ -61,9 +61,11 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
   signin: { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
   register: { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
   'forgot-password': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
+  'forgot-password-issue': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
   'reset-password': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
   'verify-email': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
   'resend-verification': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
+  'resend-verification-issue': { limit: 5, windowMs: ONE_HOUR_MS, blockDurationMs: ONE_HOUR_MS },
 
   // Operational member endpoints: 5 attempts per minute
   checkin: { limit: 5, windowMs: 60_000 },
@@ -313,6 +315,72 @@ export function checkRateLimit(
   identifiers?: RateLimitIdentifiers
 ): RateLimitResult {
   return isIpBlocked(req, prefix, customConfig, identifiers);
+}
+
+/**
+ * Consumes one request from every identifier bucket (IP, email, device).
+ * Used to throttle endpoints that always reply successfully, such as password
+ * reset requests and verification-code resends, where a "failed attempt"
+ * counter would never increment.
+ */
+export function consumeRateLimit(
+  req: RateLimitRequest,
+  prefix: string,
+  customConfig?: Partial<RateLimitConfig>,
+  identifiers?: RateLimitIdentifiers
+): RateLimitResult {
+  const { limit, windowMs, blockDurationMs } = getConfig(prefix, customConfig);
+  const now = Date.now();
+  let remaining = limit;
+  let resetMs = windowMs;
+  let triggered = false;
+
+  for (const key of buildKeys(prefix, req, identifiers)) {
+    let bucket = rateLimitStore.get(key);
+
+    if (bucket?.blockedUntil && now < bucket.blockedUntil) {
+      return blockedResult(limit, bucket.blockedUntil - now);
+    }
+
+    if (!bucket || now >= bucket.resetTime) {
+      bucket = {
+        count: 1,
+        resetTime: now + windowMs,
+      };
+      rateLimitStore.set(key, bucket);
+    } else if (bucket.count >= limit) {
+      bucket.blockedUntil = now + blockDurationMs;
+      bucket.resetTime = now + blockDurationMs;
+      triggered = true;
+    } else {
+      bucket.count += 1;
+    }
+
+    if (triggered) continue;
+
+    remaining = Math.min(remaining, Math.max(0, limit - bucket.count));
+    resetMs = Math.max(resetMs, bucket.resetTime - now);
+  }
+
+  if (triggered) {
+    const result = blockedResult(limit, blockDurationMs);
+    logAuthEvent('AUTH_RATE_LIMIT_BLOCKED', getClientIp(req), identifiers?.email ?? undefined, {
+      prefix,
+      reason: 'Request rate limit exceeded',
+      blockedForSeconds: result.retryAfterSeconds,
+      deviceId: identifiers?.deviceId ?? getDeviceId(req),
+    });
+    return result;
+  }
+
+  return {
+    success: true,
+    limit,
+    remaining,
+    resetMs,
+    retryAfterSeconds: 0,
+    isBlocked: false,
+  };
 }
 
 /**

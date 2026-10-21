@@ -3,6 +3,7 @@ import { requestPasswordReset } from '@/server/auth/password-reset';
 import { forgotPasswordSchema, formatZodErrors } from '@/lib/validators';
 import {
   checkRateLimit,
+  consumeRateLimit,
   recordFailedAuthAttempt,
   clearFailedAuthAttempts,
   createRateLimitResponse,
@@ -43,6 +44,18 @@ export async function POST(req: NextRequest) {
     );
     if (!rateLimitResult.success) {
       return createRateLimitResponse(rateLimitResult);
+    }
+
+    // The endpoint replies successfully even for unknown accounts, so failed
+    // attempts alone cannot stop reset-email flooding. Throttle issuance too.
+    const issueLimitResult = consumeRateLimit(
+      req,
+      'forgot-password-issue',
+      undefined,
+      identifiers
+    );
+    if (!issueLimitResult.success) {
+      return createRateLimitResponse(issueLimitResult);
     }
 
     const parsed = forgotPasswordSchema.safeParse(body);

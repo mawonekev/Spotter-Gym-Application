@@ -6,11 +6,12 @@ This document records the authentication security audit, remediation, and verifi
 
 Current verification status:
 
-- `npm test`: **80 passed, 0 failed**
+- `npm test`: **82 passed, 0 failed**
 - `npm run typecheck`: **passed**
+- `npm run lint`: **passed**
 - `npm run build`: **passed** (includes Next.js lint and type validation)
 - `npx prisma validate`: **passed**
-- Database migration **not yet applied** because PostgreSQL is unreachable at `localhost:5432` in this environment.
+- Database migrations applied locally to both `spotter` and `spotter_test`; production deployment remains pending.
 
 ---
 
@@ -31,6 +32,9 @@ Current verification status:
 | Audit logging and redaction | `src/server/auth/audit.ts`, auth routes and services, `prisma/schema.prisma` | Security events use `crypto.randomUUID()` identifiers, sensitive fields are redacted, events are kept in a 500-entry ring buffer and persisted to `auth_audit_logs` when the database is available. | Redaction and event tests pass. | Compliant |
 | Database and Prisma schema | `prisma/schema.prisma`, `prisma/migrations/20261020120000_auth_security_hardening/migration.sql` | Adds member reset-token fields, `user_sessions`, `verification_statuses`, `auth_audit_logs`, and `payment_logs`, with indexes and relations. | `npx prisma validate` and `npx prisma generate` pass. Migration is ready but not applied. | Ready to deploy |
 | Session handling | `src/server/auth/session.ts`, sign-in, sign-out, auth routes | Opaque 256-bit session token, SHA-256 hash persisted in `user_sessions`, HTTP-only cookie, 90-day expiry, current member status re-check, unverified-member denial, revocation support, and process-local fallback. | Session cookie parsing, effective status, and unverified denial tests pass. | Compliant |
+| Issuance throttling | `src/lib/rate-limit.ts`, forgot-password and resend-verification routes | `consumeRateLimit()` charges every request against IP, email, and device buckets, so endpoints that always reply success cannot be used to flood reset or verification emails. | Unit tests cover the fifth success, the sixth block, endpoint isolation, and email-key blocking across IPs. | Compliant |
+| Password-reset failure auditing | `src/server/auth/password-reset.ts`, reset-password route | Every failure path (missing/used token, expiry, mismatch, policy rejection, breached password, schema rejection) writes `AUTH_PASSWORD_RESET_FAILURE` without the token or password. | Lifecycle 13b asserts event types, reasons, and redaction. | Compliant |
+| Test database isolation | `tests/setup-env.mjs`, `tests/reset-test-db.mjs`, `package.json` | Tests fail closed unless `TEST_DATABASE_URL` is set, force every Prisma connection onto it, and reset that database before each suite run. | `npm test` no longer writes to the development database and is repeatable. | Compliant |
 | Multi-factor authentication | `IMPLEMENTATION_STATUS.md` | Not present in the codebase. Out of MVP scope. Documented under future work rather than adding speculative architecture. | Documented below. | Out of scope |
 
 ---
@@ -53,7 +57,8 @@ The Prisma schema (`prisma/schema.prisma`) includes:
 
 - File: `prisma/migrations/20261020120000_auth_security_hardening/migration.sql`
 - Schema validation and Prisma client generation: passed
-- Deployment: **pending**, because PostgreSQL is not reachable at `localhost:5432` (`P1001`)
+- Local deployment: applied successfully to `spotter` and `spotter_test` (PostgreSQL 17 with pgvector)
+- Production deployment: **pending** the normal deployment pipeline
 
 ### Development fallback
 
@@ -108,10 +113,9 @@ Service modules keep in-memory fallback stores so tests and local development co
 
 ```text
 npm test
-tests 80
-pass 80
+tests 82
+pass 82
 fail 0
-duration_ms 77827.3
 ```
 
 Coverage includes:
@@ -132,11 +136,12 @@ Coverage includes:
 Also verified:
 
 - `npm run typecheck`: passed
+- `npm run lint`: passed
 - `npm run build`: passed
 - `npx prisma validate`: passed
 - `npx prisma generate`: passed
 
-Database errors printed during tests are expected in this environment: PostgreSQL is offline, so persistence paths fall back to memory. The suite still passes.
+Tests run against the isolated `spotter_test` database, which is reset before every suite. The development database is never modified by the suite.
 
 ---
 
@@ -145,4 +150,4 @@ Database errors printed during tests are expected in this environment: PostgreSQ
 - **Multi-factor authentication:** not in MVP scope. When staff or owner remote access expands, add TOTP for those roles first.
 - **Distributed rate limiting:** the current limiter is in-memory. Move it to Redis or PostgreSQL before deploying multiple instances or serverless functions.
 - **Session enumeration and device management:** add a staff-visible active-session list and per-device revocation if account-sharing becomes a concern.
-- **Migration automation:** apply `20261020120000_auth_security_hardening` through the normal deployment pipeline once a reachable PostgreSQL instance is available.
+- **Migration automation:** `20261020120000_auth_security_hardening` is applied locally; add it to the production deployment pipeline before release.
