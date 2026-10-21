@@ -26,3 +26,14 @@ tests/.build
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Non-functional markdown and documentation
+*.md
+!README.md
+!**/README.md
+
+# Agent and context folders
+.agent/
+agent/
+skills/
+rules/
