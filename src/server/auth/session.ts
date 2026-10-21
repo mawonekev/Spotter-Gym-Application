@@ -20,6 +20,8 @@ export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days per PRD FR-6
 export interface SessionMember {
   memberId: string;
   memberNumber: string;
+  firstName?: string;
+  lastName?: string;
   effectiveTier: Tier;
   effectiveStatus: EffectiveStatus;
   email?: string | null;
@@ -64,6 +66,8 @@ export function parseSessionCookie(cookieHeader?: string | null): string | null 
 interface MemberForSession {
   id: string;
   memberNumber: string;
+  firstName?: string;
+  lastName?: string;
   tier: string;
   expiryDate: Date;
   cancelledAt: Date | null;
@@ -106,6 +110,8 @@ function toSessionMember(member: MemberForSession): SessionMember {
   return {
     memberId: member.id,
     memberNumber: member.memberNumber,
+    firstName: member.firstName,
+    lastName: member.lastName,
     effectiveTier,
     effectiveStatus,
     email: member.email,
@@ -165,7 +171,8 @@ export async function createUserSession(
 
 /**
  * Reads and verifies the HTTP-only session cookie against the persisted session
- * and the member's current status. Unverified members are denied access.
+ * and the member's current status. Unverified members remain signed in so the
+ * dashboard can prompt them to verify their email without locking them out.
  */
 export async function getSessionMember(
   cookieHeader?: string | null
@@ -178,18 +185,6 @@ export async function getSessionMember(
   const tokenHash = hashSessionToken(token);
   const now = Date.now();
 
-  const fallback = fallbackSessions.get(tokenHash);
-  if (fallback) {
-    if (fallback.revokedAt || now >= fallback.expiresAt || !fallback.member) {
-      fallbackSessions.delete(tokenHash);
-      return null;
-    }
-    if (fallback.member.email && !fallback.member.emailVerifiedAt) {
-      return null;
-    }
-    return fallback.member;
-  }
-
   try {
     const session = await prisma.userSession.findUnique({
       where: { tokenHash },
@@ -197,6 +192,7 @@ export async function getSessionMember(
     });
 
     if (!session) {
+      fallbackSessions.delete(tokenHash);
       return null;
     }
 
@@ -204,15 +200,19 @@ export async function getSessionMember(
       session.revokedAt ||
       session.expiresAt.getTime() <= now
     ) {
+      fallbackSessions.delete(tokenHash);
       return null;
     }
 
     const member = session.member as MemberForSession;
+    const sessionMember = toSessionMember(member);
 
-    // Access control: an unverified member has no member-app permissions.
-    if (member.email && !member.emailVerifiedAt) {
-      return null;
-    }
+    // Keep the fallback snapshot current for a later database outage.
+    fallbackSessions.set(tokenHash, {
+      memberId: member.id,
+      member: sessionMember,
+      expiresAt: session.expiresAt.getTime(),
+    });
 
     void prisma.userSession
       .update({
@@ -221,9 +221,17 @@ export async function getSessionMember(
       })
       .catch(() => {});
 
-    return toSessionMember(member);
+    return sessionMember;
   } catch {
-    return null;
+    const fallback = fallbackSessions.get(tokenHash);
+    if (!fallback) {
+      return null;
+    }
+    if (fallback.revokedAt || now >= fallback.expiresAt || !fallback.member) {
+      fallbackSessions.delete(tokenHash);
+      return null;
+    }
+    return fallback.member;
   }
 }
 

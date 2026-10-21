@@ -20,16 +20,26 @@ function getEmailTransporter(): Transporter {
     return transporter;
   }
 
+  // Tests must never deliver mail, even when local SMTP credentials exist.
+  if (process.env.NODE_ENV === 'test') {
+    transporter = nodemailer.createTransport({
+      jsonTransport: true,
+    });
+    return transporter;
+  }
+
   const host = process.env.SMTP_HOST;
   const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
+  const secureValue = process.env.SMTP_SECURE?.trim().toLowerCase();
+  const secure = secureValue ? secureValue === 'true' : port === 465;
 
   if (host && user && pass) {
     transporter = nodemailer.createTransport({
       host,
       port,
-      secure: port === 465,
+      secure,
       auth: {
         user,
         pass,
@@ -45,6 +55,14 @@ function getEmailTransporter(): Transporter {
   return transporter;
 }
 
+function getFromAddress(): string {
+  return (
+    process.env.SMTP_FROM ||
+    process.env.EMAIL_FROM ||
+    '"Spotter Gym" <welcome@spotter.gym>'
+  );
+}
+
 /**
  * Sends a welcome email to a newly created gym member.
  * Safe to call; handles errors gracefully without throwing to the caller.
@@ -52,7 +70,7 @@ function getEmailTransporter(): Transporter {
 export async function sendWelcomeEmail(data: WelcomeEmailData): Promise<boolean> {
   try {
     const transport = getEmailTransporter();
-    const fromAddress = process.env.EMAIL_FROM || '"Spotter Gym" <welcome@spotter.gym>';
+    const fromAddress = getFromAddress();
 
     const subject = `Welcome to Spotter Gym, ${data.firstName}! (Member #${data.memberNumber})`;
     const textContent = `Hello ${data.firstName} ${data.lastName},
@@ -143,7 +161,7 @@ export interface VerificationEmailData {
 export async function sendVerificationEmail(data: VerificationEmailData): Promise<boolean> {
   try {
     const transport = getEmailTransporter();
-    const fromAddress = process.env.EMAIL_FROM || '"Spotter Gym" <welcome@spotter.gym>';
+    const fromAddress = getFromAddress();
 
     const subject = `Your Spotter Gym Verification Code: ${data.code}`;
     const textContent = `Hello ${data.firstName || 'Member'},
@@ -234,7 +252,7 @@ export interface PasswordResetEmailData {
 export async function sendPasswordResetEmail(data: PasswordResetEmailData): Promise<boolean> {
   try {
     const transport = getEmailTransporter();
-    const fromAddress = process.env.EMAIL_FROM || '"Spotter Gym" <welcome@spotter.gym>';
+    const fromAddress = getFromAddress();
 
     const subject = 'Reset Your Spotter Gym Password';
     const textContent = `Hello ${data.firstName || 'Member'},

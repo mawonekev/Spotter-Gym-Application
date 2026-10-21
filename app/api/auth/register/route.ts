@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { registerMember } from '@/server/auth/register';
 import { logAuthEvent } from '@/server/auth/audit';
 import {
+  createUserSession,
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+} from '@/server/auth/session';
+import {
   signUpRequestSchema,
   formatZodErrors,
   validatePasswordNotPwned,
@@ -124,7 +129,29 @@ export async function POST(req: NextRequest) {
       memberNumber: result.memberNumber,
     });
 
-    return NextResponse.json(
+    if (!result.memberId || !result.memberNumber) {
+      throw new Error('Registration returned without a member identity.');
+    }
+
+    // Requirement: creating an account signs the member in immediately. The
+    // dashboard is responsible for prompting email verification via its banner.
+    const session = await createUserSession(result.memberId, {
+      deviceId: getDeviceId(req),
+      ip: getClientIp(req),
+      userAgent: req.headers.get('user-agent') ?? undefined,
+      member: {
+        memberId: result.memberId,
+        memberNumber: result.memberNumber,
+        firstName: result.firstName,
+        lastName: result.lastName,
+        effectiveTier: result.tier ?? 'BASIC',
+        effectiveStatus: 'ACTIVE',
+        email: result.email,
+        emailVerifiedAt: null,
+      },
+    });
+
+    const response = NextResponse.json(
       {
         success: true,
         memberId: result.memberId,
@@ -139,6 +166,16 @@ export async function POST(req: NextRequest) {
       },
       { status: 201 }
     );
+
+    response.cookies.set(SESSION_COOKIE_NAME, session.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    });
+
+    return response;
   } catch (error) {
     console.error('Registration route error:', error);
     logAuthEvent('AUTH_SIGNUP_FAILURE', '127.0.0.1', undefined, {

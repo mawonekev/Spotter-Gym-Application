@@ -28,9 +28,13 @@ import {
   parseSessionCookie,
   computeEffectiveStatus,
   SESSION_COOKIE_NAME,
+  createUserSession,
+  getSessionMember,
+  resetFallbackSessions,
 } from '../src/server/auth/session.ts';
 import { verifyPassword, hashPassword, needsRehash } from '../src/server/auth/password.ts';
 import { generateSixDigitCode, VERIFICATION_EXPIRY_MS } from '../src/server/auth/verification.ts';
+import { registerMember } from '../src/server/auth/register.ts';
 
 
 test('email normalization and trimming apply to sign in and sign up schemas', () => {
@@ -221,14 +225,14 @@ test('verification codes use a CSPRNG with a 2-10 minute expiry window', () => {
   assert.ok(VERIFICATION_EXPIRY_MS <= 10 * 60 * 1000);
 });
 
-test('verification and reset password UIs expose the required 6-digit and token controls', () => {
-  const verifySource = readFileSync(
-    new URL('../src/components/auth/VerifyEmailForm.tsx', import.meta.url),
+test('dashboard verification banner and reset password UI expose the required controls', () => {
+  const bannerSource = readFileSync(
+    new URL('../src/components/EmailVerificationBanner.tsx', import.meta.url),
     'utf8'
   );
-  assert.match(verifySource, /id="verify-email-code"/);
-  assert.match(verifySource, /maxLength=\{6\}/);
-  assert.match(verifySource, /6-digit code/i);
+  assert.match(bannerSource, /id="verification-code-input"/);
+  assert.match(bannerSource, /maxLength=\{6\}/);
+  assert.match(bannerSource, /6-digit verification code/i);
 
   const resetSource = readFileSync(
     new URL('../src/components/auth/ResetPasswordForm.tsx', import.meta.url),
@@ -238,4 +242,23 @@ test('verification and reset password UIs expose the required 6-digit and token 
   assert.match(resetSource, /id="reset-new-password"/);
   assert.match(resetSource, /id="reset-confirm-password"/);
   assert.match(resetSource, /validateResetPassword/);
+});
+
+test('sessions allow unverified members so the dashboard banner can render', async () => {
+  resetFallbackSessions();
+  const reg = await registerMember({
+    firstName: 'Session',
+    lastName: 'Flow',
+    email: 'session.flow@example.com',
+    phone: '08077778888',
+  });
+  assert.equal(reg.success, true);
+  assert.ok(reg.memberId);
+
+  const { token } = await createUserSession(reg.memberId);
+  const session = await getSessionMember(`${SESSION_COOKIE_NAME}=${token}`);
+
+  assert.ok(session);
+  assert.equal(session.email, 'session.flow@example.com');
+  assert.equal(session.emailVerifiedAt, null);
 });

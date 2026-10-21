@@ -2,7 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { MemberStatusSummary, SuggestedQuestion, AskQuestionResponse } from '@/lib/types';
+import {
+  MemberStatusSummary,
+  SuggestedQuestion,
+  AskQuestionResponse,
+  Tier,
+  EffectiveStatus,
+} from '@/lib/types';
 import { DEFAULT_SUGGESTED_QUESTIONS, COPY } from '@/lib/constants';
 import { MemberStatusCard } from '@/components/MemberStatusCard';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
@@ -29,47 +35,35 @@ const INITIAL_CACHED_STATUS: MemberStatusSummary = {
   isBalanceStale: false,
 };
 
-export function MemberHomeView() {
-  const [status, setStatus] = useState<MemberStatusSummary>(INITIAL_CACHED_STATUS);
+export interface MemberHomeViewProps {
+  member: {
+    memberId: string;
+    memberNumber: string;
+    firstName?: string;
+    lastName?: string;
+    effectiveTier: Tier;
+    effectiveStatus: EffectiveStatus;
+    email?: string | null;
+    emailVerified: boolean;
+  };
+}
+
+export function MemberHomeView({ member }: MemberHomeViewProps) {
+  const [status, setStatus] = useState<MemberStatusSummary>(() => ({
+    ...INITIAL_CACHED_STATUS,
+    memberId: member.memberId,
+    memberNumber: member.memberNumber,
+    firstName: member.firstName || 'Member',
+    lastName: member.lastName || '',
+    effectiveTier: member.effectiveTier,
+    effectiveStatus: member.effectiveStatus,
+  }));
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
   const [activeAnswer, setActiveAnswer] = useState<AskQuestionResponse | null>(null);
   const [isAsking, setIsAsking] = useState(false);
   const [officerOnDuty] = useState('Ngozi');
-  const [userEmail, setUserEmail] = useState('chioma@example.com');
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-
-  // Sync active user identity and email verification status from client session / API
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedEmail = localStorage.getItem('spotter_user_email');
-      const emailToUse = storedEmail || 'chioma@example.com';
-      setUserEmail(emailToUse);
-
-      const storedName = localStorage.getItem('spotter_user_name');
-      if (storedName) {
-        setStatus((prev) => ({
-          ...prev,
-          firstName: storedName.split(' ')[0] || prev.firstName,
-          lastName: storedName.split(' ').slice(1).join(' ') || prev.lastName,
-        }));
-      }
-
-      const locallyVerified =
-        localStorage.getItem(`spotter_verified_${emailToUse}`) === 'true';
-      setIsEmailVerified(locallyVerified);
-
-      // Query server for verified status
-      fetch(`/api/auth/verification-status?email=${encodeURIComponent(emailToUse)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.emailVerified) {
-            setIsEmailVerified(true);
-            localStorage.setItem(`spotter_verified_${emailToUse}`, 'true');
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
+  const [userEmail] = useState(member.email || '');
+  const [isEmailVerified, setIsEmailVerified] = useState(member.emailVerified);
 
   // Dynamically update document title based on the active view
   useEffect(() => {
@@ -147,6 +141,8 @@ export function MemberHomeView() {
           border: 'none',
           borderBottom: 'none',
           width: '100%',
+          maxWidth: 'var(--layout-content-reading-width, 720px)',
+          margin: '0 auto',
           boxSizing: 'border-box',
         }}
       >
@@ -219,6 +215,8 @@ export function MemberHomeView() {
           padding: 'var(--spacing-6) var(--spacing-6) var(--spacing-8)',
           backgroundColor: 'transparent',
           width: '100%',
+          maxWidth: 'var(--layout-content-reading-width, 720px)',
+          margin: '0 auto',
           boxSizing: 'border-box',
         }}
         aria-label="Hero"
@@ -252,33 +250,6 @@ export function MemberHomeView() {
           Your personal gym records grounded exclusively in official records. Check in daily, view your attendance and balance, and pay renewals seamlessly.
         </p>
 
-        {/* Spacing between description and CTA: Exactly 1rem */}
-        <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center' }}>
-          {/* Exactly one primary CTA: 'Get Started for Free' pointing to /auth?view=signin */}
-          <Link
-            id="hero-get-started-cta"
-            href="/auth?view=signin"
-            style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'var(--color-on-primary)',
-              padding: '0.9375rem 1.125rem',
-              borderRadius: '0.5rem',
-              fontFamily: 'var(--button-font-family, var(--font-family-primary))',
-              fontSize: 'var(--button-font-size, var(--font-size-14))',
-              fontWeight: 'var(--button-font-weight, var(--font-weight-medium))',
-              lineHeight: 'var(--button-line-height, var(--line-height-20))',
-              letterSpacing: 'var(--button-letter-spacing, -0.2px)',
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'var(--elevation-level2)',
-            }}
-            aria-label="Get Started for Free"
-          >
-            Get Started for Free
-          </Link>
-        </div>
       </section>
 
       {/* 3. Main Member Interactive Content Area */}
@@ -290,11 +261,12 @@ export function MemberHomeView() {
           padding: '0 var(--spacing-6) var(--spacing-8)',
           width: '100%',
           maxWidth: 'var(--layout-content-reading-width, 720px)',
+          margin: '0 auto',
           boxSizing: 'border-box',
         }}
       >
         {/* Email Verification Banner */}
-        {!isEmailVerified && (
+        {userEmail && !isEmailVerified && (
           <EmailVerificationBanner
             email={userEmail}
             isVerified={isEmailVerified}

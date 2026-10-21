@@ -58,9 +58,6 @@ export function EmailVerificationBanner({
 
       setFeedback('Email verified successfully.');
       setVerified(true);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(`spotter_verified_${email}`, 'true');
-      }
       onVerified?.();
     } catch {
       setError('Unable to verify code right now. Please try again.');

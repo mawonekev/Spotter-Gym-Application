@@ -62,27 +62,22 @@ export async function POST(req: NextRequest) {
     const result = await authenticateMember(parsed.data, clientIp);
 
     if (!result.success) {
-      // A pending verification is not a failed credential attempt.
-      if (!result.requiresEmailVerification) {
-        const failure = recordFailedAuthAttempt(
-          req,
-          'signin',
-          undefined,
-          identifiers
-        );
-        if (!failure.success) {
-          return createRateLimitResponse(failure);
-        }
+      const failure = recordFailedAuthAttempt(
+        req,
+        'signin',
+        undefined,
+        identifiers
+      );
+      if (!failure.success) {
+        return createRateLimitResponse(failure);
       }
       return NextResponse.json(
         {
           success: false,
           error: result.error,
           validationErrors: result.validationErrors,
-          requiresEmailVerification: result.requiresEmailVerification === true,
-          email: result.email,
         },
-        { status: result.requiresEmailVerification ? 403 : 401 }
+        { status: 401 }
       );
     }
 
@@ -95,6 +90,8 @@ export async function POST(req: NextRequest) {
       member: {
         memberId: result.memberId!,
         memberNumber: result.memberNumber!,
+        firstName: result.firstName,
+        lastName: result.lastName,
         effectiveTier: result.effectiveTier ?? 'BASIC',
         effectiveStatus: result.effectiveStatus ?? 'ACTIVE',
         email: result.email,

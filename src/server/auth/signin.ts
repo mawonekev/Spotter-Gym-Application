@@ -6,11 +6,7 @@
 import { validateSignIn, type SignInValues } from '../../lib/validators.ts';
 import { findMember } from './register.ts';
 import { verifyPassword } from './password.ts';
-import {
-  hasPendingVerification,
-  isEmailVerified,
-  issueVerificationCode,
-} from './verification.ts';
+import { isEmailVerified } from './verification.ts';
 import { logAuthEvent } from './audit.ts';
 import type { Tier, EffectiveStatus } from '../../lib/types/index.ts';
 
@@ -22,7 +18,6 @@ export interface SignInResult {
   lastName?: string;
   email?: string;
   emailVerified?: boolean;
-  requiresEmailVerification?: boolean;
   effectiveTier?: Tier;
   effectiveStatus?: EffectiveStatus;
   error?: string;
@@ -84,31 +79,10 @@ export async function authenticateMember(
     };
   }
 
-  // 4. Unverified accounts are restricted until email_verified_at is populated.
+  // 4. Email verification is prompted from the dashboard banner. It must not
+  // block sign-in, otherwise a new member cannot reach that banner.
   const emailVerified =
     member.emailVerifiedAt != null || isEmailVerified(member.email);
-
-  if (member.email && !emailVerified) {
-    const verificationPending =
-      member.emailVerificationCode != null || hasPendingVerification(member.email);
-
-    if (!verificationPending) {
-      // Re-issue a code if the previous one expired or was cleared so the member
-      // can still complete verification instead of being permanently locked out.
-      issueVerificationCode(member.email, member.firstName);
-    }
-
-    logAuthEvent('AUTH_SIGNIN_FAILURE', clientIp, phone, {
-      reason: 'Email verification pending',
-    });
-    return {
-      success: false,
-      requiresEmailVerification: true,
-      email: member.email,
-      error:
-        'Please verify your email address before signing in. Enter the 6-digit code sent to your email.',
-    };
-  }
 
   // 5. Compute effective status & tier
   const now = new Date();

@@ -77,7 +77,7 @@ test('authenticateMember - signs in registered member successfully', async () =>
   assert.equal(authSuccess.effectiveTier, 'BASIC');
 });
 
-test('authenticateMember - blocks sign-in until the email is verified, then accepts formatted phone numbers', async () => {
+test('authenticateMember - allows sign-in before email verification and reports status', async () => {
   const email = 'vera.flow@example.com';
   const phone = '08055556666';
   const password = 'SecurePassword123!';
@@ -91,18 +91,19 @@ test('authenticateMember - blocks sign-in until the email is verified, then acce
   });
   assert.equal(registered.success, true);
 
-  const blocked = await authenticateMember({ phone, password });
-  assert.equal(blocked.success, false);
-  assert.equal(blocked.requiresEmailVerification, true);
-  assert.equal(blocked.email, email);
+  const unverified = await authenticateMember({ phone, password });
+  assert.equal(unverified.success, true);
+  assert.equal(unverified.emailVerified, false);
+  assert.equal(unverified.requiresEmailVerification, undefined);
 
   const record = getVerificationRecord(email);
   assert.ok(record);
   record.verified = true;
 
-  const allowed = await authenticateMember({ phone: '0805 555 6666', password });
-  assert.equal(allowed.success, true);
-  assert.equal(allowed.firstName, 'Vera');
+  const verified = await authenticateMember({ phone: '0805 555 6666', password });
+  assert.equal(verified.success, true);
+  assert.equal(verified.firstName, 'Vera');
+  assert.equal(verified.emailVerified, true);
 });
 
 test('authenticateMember - rejects unregistered mobile number', async () => {

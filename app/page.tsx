@@ -1,6 +1,9 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getSessionMember } from '@/server/auth/session';
 
 export const metadata: Metadata = {
   title: 'Spotter | Your personal gym records',
@@ -20,7 +23,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Page() {
+export const dynamic = 'force-dynamic';
+
+export default async function Page() {
+  const member = await getSessionMember(cookies().toString());
+
+  if (member) {
+    redirect('/dashboard');
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* HEADER */}
@@ -68,31 +79,17 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Dashboard Card */}
+        {/* Member Portal Card */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 max-w-2xl">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
-                Member Portal
-              </span>
-              <h3 className="text-xl font-bold text-slate-900 mt-1">Chioma Adeyemi</h3>
-              <p className="text-xs text-slate-500">Member #SP-0042 &bull; Basic Tier</p>
-            </div>
-            <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              ACTIVE
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-5">
-            <div className="bg-white border border-slate-200 rounded-lg p-3.5">
-              <div className="text-xs text-slate-500 font-medium">Attendance</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">10 days this month</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-3.5">
-              <div className="text-xs text-slate-500 font-medium">Renewal Date</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">28 Oct 2026</div>
-            </div>
-          </div>
+          <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
+            Member Portal
+          </span>
+          <h3 className="text-xl font-bold text-slate-900 mt-1">
+            Your records, your membership
+          </h3>
+          <p className="text-sm text-slate-600 mt-2 mb-5">
+            Sign in to check in, view your own attendance and balance, and pay renewals securely.
+          </p>
 
           <div className="flex justify-center items-center pt-2">
             <Link

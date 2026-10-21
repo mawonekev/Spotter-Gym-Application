@@ -187,27 +187,6 @@ export function hasPendingVerification(email: string): boolean {
 }
 
 /**
- * Resolves verification status from memory first, then the database.
- * The database is the durable source once a verification completes.
- */
-export async function getEmailVerificationStatus(email: string): Promise<boolean> {
-  const normalizedEmail = email.trim().toLowerCase();
-  if (isEmailVerified(normalizedEmail)) {
-    return true;
-  }
-
-  try {
-    const member = await prisma.member.findFirst({
-      where: { email: normalizedEmail },
-      select: { emailVerifiedAt: true },
-    });
-    return member?.emailVerifiedAt != null;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Verifies a 6-digit code against the recorded code for an email.
  */
 export async function verifyEmailCode(

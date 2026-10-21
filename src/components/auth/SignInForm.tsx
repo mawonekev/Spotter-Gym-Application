@@ -5,16 +5,11 @@ import { FormField } from '../FormField';
 import { normalizeEmail, validateRequired, validatePassword } from '@/lib/validators';
 
 export interface SignInFormProps {
-  onSuccess?: (phone: string) => void;
-  onVerificationRequired?: (email: string) => void;
+  onSuccess?: (email?: string) => void;
   onSwitchView: (view: 'signin' | 'signup' | 'forgot-password') => void;
 }
 
-export function SignInForm({
-  onSuccess,
-  onVerificationRequired,
-  onSwitchView,
-}: SignInFormProps) {
+export function SignInForm({ onSuccess, onSwitchView }: SignInFormProps) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -108,23 +103,14 @@ export function SignInForm({
 
       const data = await res.json();
 
-      if (data.requiresEmailVerification && data.email) {
-        if (onVerificationRequired) {
-          onVerificationRequired(data.email);
-        } else {
-          setServerError(
-            data.error || 'Please verify your email address before signing in.'
-          );
-        }
-        return;
-      }
-
       if (!res.ok || !data.success) {
         setServerError(data.error || 'Failed to sign in. Please verify your details.');
         return;
       }
 
-      onSuccess?.(phone);
+      const memberEmail =
+        typeof data.member?.email === 'string' ? data.member.email : undefined;
+      onSuccess?.(memberEmail || (trimmedPhone.includes('@') ? trimmedPhone : undefined));
     } catch {
       setServerError('Unable to reach server. Please check your network connection.');
     } finally {
